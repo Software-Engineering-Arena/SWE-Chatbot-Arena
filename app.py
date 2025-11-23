@@ -398,7 +398,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                     {
                         "Elo Score": 2,
                         "Conversation Efficiency Index": 2,
-                        "Model Consistency Score": 2,
+                        "Consistency Score": 2,
                         "Average Win Rate": 2,
                         "Bradley-Terry Coefficient": 2,
                         "Eigenvector Centrality Value": 2,
@@ -426,7 +426,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                 "Website",
                 "Elo Score",
                 "Conversation Efficiency Index",
-                "Model Consistency Score",
+                "Consistency Score",
                 "Average Win Rate",
                 "Average Failure Rate",
                 "Bradley-Terry Coefficient",
@@ -569,7 +569,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             "Website": website_values,
             "Elo Score": elo_scores.values,
             "Conversation Efficiency Index": cei_result.values,
-            "Model Consistency Score": mcs_result.values,
+            "Consistency Score": mcs_result.values,
             "Average Win Rate": avr_scores.values,
             "Bradley-Terry Coefficient": bt_scores.values,
             "Eigenvector Centrality Value": eigen_scores.values,
@@ -709,7 +709,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 "Website",
                 "Elo Score",
                 "Conversation Efficiency Index",
-                "Model Consistency Score",
+                "Consistency Score",
             ],
             search_columns=["Model", "Website"],
             filter_columns=[
@@ -730,12 +730,12 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                     label="Conversation Efficiency Index"
                 ),
                 ColumnFilter(
-                    "Model Consistency Score",
+                    "Consistency Score",
                     min=0.0,
                     max=1.0,
                     default=[0.0, 1.0],
                     type="slider",
-                    label="Model Consistency Score"
+                    label="Consistency Score"
                 ),
                 ColumnFilter(
                     "Average Win Rate",
