@@ -29,6 +29,12 @@ api_key = os.getenv("API_KEY")
 base_url = "https://api.pandalla.ai/v1"
 openai_client = OpenAI(api_key=api_key, base_url=base_url)
 
+# Hugging Face repository names for data storage
+LEADERBOARD_REPO = "SWE-Arena/leaderboard_data"
+VOTE_REPO = "SWE-Arena/vote_data"
+CONVERSATION_REPO = "SWE-Arena/conversation_data"
+LEADERBOARD_FILE = "model-arena.json"
+
 # Timeout in seconds for model responses
 TIMEOUT = 90
 
@@ -350,7 +356,7 @@ def is_file_within_time_frame(file_path, days):
         return False
 
 
-def load_content_from_hf(repo_name="SWE-Arena/vote_data"):
+def load_content_from_hf(repo_name):
     """
     Read feedback content from a Hugging Face repository within the last LEADERBOARD_UPDATE_TIME_FRAME_DAYS days.
 
@@ -387,8 +393,8 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
     if use_cache:
         try:
             cached_path = hf_hub_download(
-                repo_id="SWE-Arena/leaderboard_data",
-                filename="swe-model-arena.json",
+                repo_id=LEADERBOARD_REPO,
+                filename=LEADERBOARD_FILE,
                 repo_type="dataset",
             )
             with open(cached_path, "r") as f:
@@ -437,7 +443,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
         )
 
     # Load conversation data from the Hugging Face repository
-    conversation_data = load_content_from_hf("SWE-Arena/conversation_data")
+    conversation_data = load_content_from_hf(CONVERSATION_REPO)
     conversation_df = pd.DataFrame(conversation_data)
 
     # Merge vote data with conversation data
@@ -611,8 +617,8 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
 
             upload_file(
                 path_or_fileobj=file_like_object,
-                path_in_repo="swe-model-arena.json",
-                repo_id="SWE-Arena/leaderboard_data",
+                path_in_repo=LEADERBOARD_FILE,
+                repo_id=LEADERBOARD_REPO,
                 repo_type="dataset",
                 token=HfApi().token,
             )
@@ -1429,7 +1435,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
 
             # Save feedback back to the Hugging Face dataset
             save_content_to_hf(
-                vote_entry, "SWE-Arena/vote_data", file_name, token
+                vote_entry, VOTE_REPO, file_name, token
             )
 
             conversation_state["right_chat"][0]["content"] = conversation_state[
@@ -1442,7 +1448,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             # Save conversations back to the Hugging Face dataset
             save_content_to_hf(
                 conversation_state,
-                "SWE-Arena/conversation_data",
+                CONVERSATION_REPO,
                 file_name,
                 token,
             )
