@@ -20,10 +20,11 @@ Welcome to **SWE-Model-Arena**, an open-source platform designed for evaluating 
 - **Multi-Round Conversational Workflows**: Evaluate models through extended, context-dependent interactions that mirror real-world SE processes.
 - **RepoChat Integration**: Automatically inject repository context (issues, commits, PRs) into conversations for more realistic evaluations.
 - **Advanced Evaluation Metrics**: Assess models using a comprehensive suite of metrics including:
-  - Traditional metrics: Elo score and average win rate
-  - Network-based metrics: Eigenvector centrality, PageRank score
-  - Community detection: Newman modularity score
-  - Consistency score: Quantify model determinism and reliability through self-play matches
+  - **Traditional ranking metrics**: Elo ratings and win rates to measure overall model performance
+  - **Network-based metrics**: Eigenvector centrality and PageRank to identify influential models in head-to-head comparisons
+  - **Community detection metrics**: Newman modularity to reveal clusters of models with similar capabilities
+  - **Consistency metrics**: Self-play match analysis to quantify model determinism and reliability
+  - **Efficiency metrics**: Conversation efficiency index to measure response quality relative to length
 - **Transparent, Open-Source Leaderboard**: View real-time model rankings across diverse SE workflows with full transparency.
 - **Intelligent Request Filtering**: Employ `gpt-oss-safeguard-20b` as a guardrail to automatically filter out non-software-engineering-related requests, ensuring focused and relevant evaluations.
 
