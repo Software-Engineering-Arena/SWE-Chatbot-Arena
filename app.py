@@ -316,12 +316,12 @@ def format_conversation_history(conversation_history):
     return formatted_text
 
 
-def save_content_to_hf(vote_data, repo_name, file_name, token=None):
+def save_content_to_hf(data, repo_name, file_name, token=None):
     """
     Save feedback content to Hugging Face repository.
     """
     # Serialize the content to JSON and encode it as bytes
-    json_content = json.dumps(vote_data, indent=4).encode("utf-8")
+    json_content = json.dumps(data, indent=4).encode("utf-8")
 
     # Create a binary file-like object
     file_like_object = io.BytesIO(json_content)
@@ -366,7 +366,7 @@ def load_content_from_hf(repo_name):
     Returns:
         list: Aggregated feedback data read from the repository.
     """
-    vote_data = []
+    data = []
     try:
         api = HfApi()
         # List all files in the repository
@@ -381,8 +381,8 @@ def load_content_from_hf(repo_name):
             with open(local_path, "r") as f:
                 data = json.load(f)
                 data["timestamp"] = file.split("/")[-1].split(".")[0]
-                vote_data.append(data)
-        return vote_data
+                data.append(data)
+        return data
 
     except:
         raise Exception("Error loading feedback data from Hugging Face repository.")
@@ -417,8 +417,8 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             print(f"No cached leaderboard found, computing from votes...")
 
     # Load feedback data from the Hugging Face repository
-    vote_data = load_content_from_hf()
-    vote_df = pd.DataFrame(vote_data)
+    data = load_content_from_hf(VOTE_REPO)
+    vote_df = pd.DataFrame(data)
 
     # Concatenate the new feedback with the existing leaderboard data
     if vote_entry is not None:
