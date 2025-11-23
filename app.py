@@ -33,7 +33,7 @@ openai_client = OpenAI(api_key=api_key, base_url=base_url)
 LEADERBOARD_REPO = "SWE-Arena/leaderboard_data"
 VOTE_REPO = "SWE-Arena/vote_data"
 CONVERSATION_REPO = "SWE-Arena/conversation_data"
-LEADERBOARD_FILE = "model-arena.json"
+LEADERBOARD_FILE = "model-arena"
 
 # Timeout in seconds for model responses
 TIMEOUT = 90
@@ -394,7 +394,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
         try:
             cached_path = hf_hub_download(
                 repo_id=LEADERBOARD_REPO,
-                filename=LEADERBOARD_FILE,
+                filename=f'{LEADERBOARD_FILE}.json',
                 repo_type="dataset",
             )
             with open(cached_path, "r") as f:
@@ -412,6 +412,16 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                         "PageRank Score": 2,
                     }
                 )
+                # Add Website column if it doesn't exist
+                if "Website" not in leaderboard_data.columns:
+                    leaderboard_data["Website"] = leaderboard_data["Model"].map(
+                        lambda x: model_links.get(x, "")
+                    )
+                    # Reorder columns to place Website after Model
+                    cols = leaderboard_data.columns.tolist()
+                    model_idx = cols.index("Model")
+                    cols.insert(model_idx + 1, cols.pop(cols.index("Website")))
+                    leaderboard_data = leaderboard_data[cols]
                 return leaderboard_data
         except Exception as e:
             print(f"No cached leaderboard found, computing from votes...")
@@ -617,7 +627,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
 
             upload_file(
                 path_or_fileobj=file_like_object,
-                path_in_repo=LEADERBOARD_FILE,
+                path_in_repo=f'{LEADERBOARD_FILE}.json',
                 repo_id=LEADERBOARD_REPO,
                 repo_type="dataset",
                 token=HfApi().token,
@@ -1431,7 +1441,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             }
 
             # Get the current datetime for file naming
-            file_name = f"swe-model-arena/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            file_name = f"{LEADERBOARD_FILE}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
             # Save feedback back to the Hugging Face dataset
             save_content_to_hf(
