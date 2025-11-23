@@ -25,7 +25,7 @@ Welcome to **SWE-Model-Arena**, an open-source platform designed for evaluating 
   - Community detection: Newman modularity score
   - Consistency score: Quantify model determinism and reliability through self-play matches
 - **Transparent, Open-Source Leaderboard**: View real-time model rankings across diverse SE workflows with full transparency.
-- **Intelligent Request Filtering**: Employ `GPT-OSS-20B` as a guardrail to automatically filter out non-software-engineering-related requests, ensuring focused and relevant evaluations.
+- **Intelligent Request Filtering**: Employ `gpt-oss-safeguard-20b` as a guardrail to automatically filter out non-software-engineering-related requests, ensuring focused and relevant evaluations.
 
 ## Why SWE-Model-Arena?
 
