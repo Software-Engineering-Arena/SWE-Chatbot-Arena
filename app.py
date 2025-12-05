@@ -685,7 +685,6 @@ def check_auth_on_load(request: gr.Request):
         )
 
 
-# Gradio Interface
 # Suppress the deprecation warning for theme parameter until Gradio 6.0 is released
 warnings.filterwarnings('ignore', category=DeprecationWarning, message=".*'theme' parameter.*")
 with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
