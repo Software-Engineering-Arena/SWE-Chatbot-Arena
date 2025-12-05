@@ -11,6 +11,7 @@ import os
 import random
 import re
 import threading
+import warnings
 
 import gradio as gr
 import pandas as pd
@@ -650,24 +651,14 @@ def toggle_submit_button(text):
 # Function to check initial authentication status
 def check_auth_on_load(request: gr.Request):
     """Check if user is already authenticated when page loads."""
-    print(f"DEBUG: Checking auth on load")
-    print(f"DEBUG: Has username attr: {hasattr(request, 'username')}")
-    if hasattr(request, 'username'):
-        print(f"DEBUG: Username: {request.username}")
-
     # Try to get token from environment (for Spaces) or HfApi (for local)
     token = os.getenv("HF_TOKEN") or HfApi().token
 
     # Check if user is authenticated via OAuth
     is_authenticated = (hasattr(request, 'username') and request.username is not None and request.username != "")
 
-    print(f"DEBUG: Is authenticated: {is_authenticated}")
-    print(f"DEBUG: Token available: {token is not None}")
-
     if is_authenticated or token:
         # User is logged in OR we have a token available
-        username = request.username if hasattr(request, 'username') else "local_user"
-        print(f"DEBUG: Enabling interface for user: {username}")
         return (
             gr.update(interactive=True),  # repo_url
             gr.update(interactive=True),  # shared_input
@@ -681,7 +672,6 @@ def check_auth_on_load(request: gr.Request):
         )
     else:
         # User not logged in
-        print(f"DEBUG: User not authenticated, keeping interface disabled")
         return (
             gr.update(interactive=False),  # repo_url
             gr.update(interactive=False),  # shared_input
@@ -696,6 +686,8 @@ def check_auth_on_load(request: gr.Request):
 
 
 # Gradio Interface
+# Suppress the deprecation warning for theme parameter until Gradio 6.0 is released
+warnings.filterwarnings('ignore', category=DeprecationWarning, message=".*'theme' parameter.*")
 with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
     user_authenticated = gr.State(False)
     models_state = gr.State({})
@@ -1211,19 +1203,11 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             When deployed on HF Spaces with OAuth, request contains user info.
             This is also used by the refresh button to re-check auth status.
             """
-            print(f"DEBUG: handle_login called")
-            print(f"DEBUG: Has username: {hasattr(request, 'username')}")
-            if hasattr(request, 'username'):
-                print(f"DEBUG: Username in handle_login: {request.username}")
-
             # Try to get token from environment (for Spaces) or HfApi (for local)
             token = os.getenv("HF_TOKEN") or HfApi().token
 
             # Check if user is authenticated through HF Spaces OAuth
             is_authenticated = hasattr(request, 'username') and request.username
-
-            print(f"DEBUG: Is authenticated in handle_login: {is_authenticated}")
-            print(f"DEBUG: Token available in handle_login: {token is not None}")
 
             if is_authenticated or token:
                 # User is logged in
