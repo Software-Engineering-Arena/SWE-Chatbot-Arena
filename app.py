@@ -406,7 +406,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                         "Elo Score": 2,
                         "Conversation Efficiency Index": 2,
                         "Consistency Score": 2,
-                        "Average Win Rate": 2,
+                        "Win Rate": 2,
                         "Bradley-Terry Coefficient": 2,
                         "Eigenvector Centrality Value": 2,
                         "Newman Modularity Score": 2,
@@ -444,7 +444,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                 "Elo Score",
                 "Conversation Efficiency Index",
                 "Consistency Score",
-                "Average Win Rate",
+                "Win Rate",
                 "Bradley-Terry Coefficient",
                 "Eigenvector Centrality Value",
                 "Newman Modularity Score",
@@ -586,7 +586,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             "Elo Score": elo_scores.values,
             "Conversation Efficiency Index": cei_result.values,
             "Consistency Score": mcs_result.values,
-            "Average Win Rate": avr_scores.values,
+            "Win Rate": avr_scores.values,
             "Bradley-Terry Coefficient": bt_scores.values,
             "Eigenvector Centrality Value": eigen_scores.values,
             "Newman Modularity Score": newman_scores.values,
@@ -598,7 +598,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
     leaderboard_data = leaderboard_data.round(
         {
             "Elo Score": 2,
-            "Average Win Rate": 2,
+            "Win Rate": 2,
             "Bradley-Terry Coefficient": 2,
             "Eigenvector Centrality Value": 2,
             "Newman Modularity Score": 2,
@@ -744,12 +744,12 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                     label="Consistency Score"
                 ),
                 ColumnFilter(
-                    "Average Win Rate",
+                    "Win Rate",
                     min=0.0,
                     max=1.0,
                     default=[0.0, 1.0],
                     type="slider",
-                    label="Average Win Rate"
+                    label="Win Rate"
                 ),
                 ColumnFilter(
                     "Bradley-Terry Coefficient",
