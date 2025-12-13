@@ -404,9 +404,9 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                 leaderboard_data = leaderboard_data.round(
                     {
                         "Elo Score": 2,
+                        "Win Rate": 2,
                         "Conversation Efficiency Index": 2,
                         "Consistency Score": 2,
-                        "Win Rate": 2,
                         "Bradley-Terry Coefficient": 2,
                         "Eigenvector Centrality Value": 2,
                         "Newman Modularity Score": 2,
@@ -442,9 +442,9 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                 "Model",
                 "Website",
                 "Elo Score",
+                "Win Rate",
                 "Conversation Efficiency Index",
                 "Consistency Score",
-                "Win Rate",
                 "Bradley-Terry Coefficient",
                 "Eigenvector Centrality Value",
                 "Newman Modularity Score",
@@ -584,9 +584,9 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             "Model": elo_scores.index,
             "Website": website_values,
             "Elo Score": elo_scores.values,
+            "Win Rate": avr_scores.values,
             "Conversation Efficiency Index": cei_result.values,
             "Consistency Score": mcs_result.values,
-            "Win Rate": avr_scores.values,
             "Bradley-Terry Coefficient": bt_scores.values,
             "Eigenvector Centrality Value": eigen_scores.values,
             "Newman Modularity Score": newman_scores.values,
@@ -728,6 +728,14 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                     label="Elo Score"
                 ),
                 ColumnFilter(
+                    "Win Rate",
+                    min=0.0,
+                    max=1.0,
+                    default=[0.0, 1.0],
+                    type="slider",
+                    label="Win Rate"
+                ),
+                ColumnFilter(
                     "Conversation Efficiency Index",
                     min=-1.0,
                     max=1.0,
@@ -742,14 +750,6 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                     default=[0.0, 1.0],
                     type="slider",
                     label="Consistency Score"
-                ),
-                ColumnFilter(
-                    "Win Rate",
-                    min=0.0,
-                    max=1.0,
-                    default=[0.0, 1.0],
-                    type="slider",
-                    label="Win Rate"
                 ),
                 ColumnFilter(
                     "Bradley-Terry Coefficient",
