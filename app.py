@@ -445,7 +445,6 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                 "Conversation Efficiency Index",
                 "Consistency Score",
                 "Average Win Rate",
-                "Average Failure Rate",
                 "Bradley-Terry Coefficient",
                 "Eigenvector Centrality Value",
                 "Newman Modularity Score",
