@@ -23,11 +23,11 @@ from huggingface_hub import upload_file, hf_hub_download, HfApi
 from openai import OpenAI
 
 # Load environment variables
-dotenv.load_dotenv()
+dotenv.load_dotenv(override=True)
 
 # Initialize OpenAI Client
 api_key = os.getenv("API_KEY")
-base_url = "https://api.pandalla.ai/v1"
+base_url = "https://openrouter.ai/api/v1"
 openai_client = OpenAI(api_key=api_key, base_url=base_url)
 
 # Hugging Face repository names for data storage
@@ -47,7 +47,7 @@ SHOW_HINT_STRING = True  # Set to False to hide the hint string altogether
 HINT_STRING = "Once signed in, your votes will be recorded securely."
 
 # Load model metadata
-model_metadata = pd.read_json("model_data.jsonl", lines=True)
+model_metadata = pd.read_json("model_metadata.jsonl", lines=True)
 
 # Create a dictionary mapping model names to their context lengths
 model_context_window = model_metadata.set_index("model_name")[
@@ -413,15 +413,15 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                         "PageRank Score": 2,
                     }
                 )
-                # Add Website column if it doesn't exist
-                if "Website" not in leaderboard_data.columns:
-                    leaderboard_data["Website"] = leaderboard_data["Model"].map(
-                        lambda x: model_links.get(x, "")
+                # Add Context Window column if it doesn't exist
+                if "Context Window" not in leaderboard_data.columns:
+                    leaderboard_data["Context Window"] = leaderboard_data["Model"].map(
+                        lambda x: model_context_window.get(x, "")
                     )
-                    # Reorder columns to place Website after Model
+                    # Reorder columns to place Context Window after Model
                     cols = leaderboard_data.columns.tolist()
                     model_idx = cols.index("Model")
-                    cols.insert(model_idx + 1, cols.pop(cols.index("Website")))
+                    cols.insert(model_idx + 1, cols.pop(cols.index("Context Window")))
                     leaderboard_data = leaderboard_data[cols]
                 return leaderboard_data
         except Exception as e:
@@ -440,7 +440,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             columns=[
                 "Rank",
                 "Model",
-                "Website",
+                "Context Window",
                 "Elo Score",
                 "Win Rate",
                 "Conversation Efficiency Index",
@@ -576,13 +576,13 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
     mcs_result = pd.Series(mcs_result)
 
     # Combine all results into a single DataFrame
-    # Add Website column by mapping model names to their links
-    website_values = [model_links.get(model, "") for model in elo_scores.index]
+    # Add Context Window column by mapping model names to their context windows
+    context_window_values = [model_context_window.get(model, "") for model in elo_scores.index]
 
     leaderboard_data = pd.DataFrame(
         {
             "Model": elo_scores.index,
-            "Website": website_values,
+            "Context Window": context_window_values,
             "Elo Score": elo_scores.values,
             "Win Rate": avr_scores.values,
             "Conversation Efficiency Index": cei_result.values,
@@ -712,12 +712,12 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             select_columns=[
                 "Rank",
                 "Model",
-                "Website",
+                "Context Window",
                 "Elo Score",
                 "Conversation Efficiency Index",
                 "Consistency Score",
             ],
-            search_columns=["Model", "Website"],
+            search_columns=["Model", "Context Window"],
             filter_columns=[
                 ColumnFilter(
                     "Elo Score",
