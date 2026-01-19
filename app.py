@@ -54,9 +54,6 @@ model_context_window = model_metadata.set_index("model_name")[
     "context_window"
 ].to_dict()
 
-# Create a dictionary mapping model names to their links
-model_links = model_metadata.set_index("model_name")["link"].to_dict()
-
 # Get the list of available models
 available_models = model_metadata["model_name"].tolist()
 
