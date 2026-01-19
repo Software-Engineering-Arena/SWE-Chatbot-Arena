@@ -34,7 +34,7 @@ openai_client = OpenAI(api_key=api_key, base_url=base_url)
 LEADERBOARD_REPO = "SWE-Arena/leaderboard_data"
 VOTE_REPO = "SWE-Arena/vote_data"
 CONVERSATION_REPO = "SWE-Arena/conversation_data"
-LEADERBOARD_FILE = "model-arena"
+LEADERBOARD_FILE = "model_arena"
 
 # Timeout in seconds for model responses
 TIMEOUT = 90
