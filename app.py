@@ -1093,7 +1093,45 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                     gr.update(visible=False),
                 )
             except Exception as e:
-                raise gr.Error(str(e))
+                # Handle other errors by resetting UI state and showing error message
+                return (
+                    # [0] guardrail_message: show error message
+                    gr.update(value=f"### Error: {str(e)}", visible=True),
+                    # [1] shared_input: re-enable and clear
+                    gr.update(value="", interactive=True, visible=True),
+                    # [2] repo_url: re-enable and clear
+                    gr.update(value="", interactive=True, visible=True),
+                    # [3] user_prompt_md: hide
+                    gr.update(value="", visible=False),
+                    # [4] response_a_title: hide
+                    gr.update(value="", visible=False),
+                    # [5] response_b_title: hide
+                    gr.update(value="", visible=False),
+                    # [6] response_a: clear
+                    gr.update(value=""),
+                    # [7] response_b: clear
+                    gr.update(value=""),
+                    # [8] multi_round_inputs: hide
+                    gr.update(visible=False),
+                    # [9] vote_panel: hide
+                    gr.update(visible=False),
+                    # [10] send_first: re-enable with original text
+                    gr.update(visible=True, interactive=True, value="Submit"),
+                    # [11] feedback: disable
+                    gr.update(interactive=False),
+                    # [12] models_state: pass state as-is
+                    models_state,
+                    # [13] conversation_state: pass state as-is
+                    conversation_state,
+                    # [14] timeout_popup: hide popup
+                    gr.update(visible=False),
+                    # [15] model_a_send: disable
+                    gr.update(interactive=False),
+                    # [16] model_b_send: disable
+                    gr.update(interactive=False),
+                    # [17] thanks_message: hide
+                    gr.update(visible=False),
+                )
 
             # Determine the initial state of the multi-round send buttons
             model_a_send_state = toggle_submit_button("")
