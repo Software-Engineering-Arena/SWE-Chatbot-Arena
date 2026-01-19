@@ -696,7 +696,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
 
     with gr.Tab("🏆Leaderboard"):
         # Add title and description as a Markdown component
-        gr.Markdown("# 🏆 FM4SE Leaderboard")
+        gr.Markdown("# 🏆 LLM4SE Leaderboard")
         gr.Markdown(
             "Community-Driven Evaluation of Top Foundation Models (FMs) in Software Engineering (SE) Tasks"
         )
