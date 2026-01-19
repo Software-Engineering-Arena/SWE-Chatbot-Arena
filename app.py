@@ -60,14 +60,10 @@ model_name_to_id = model_metadata.set_index("model_name")[
 ].to_dict()
 
 # Create a dictionary mapping model names to their organizations
-def extract_organization(model_id):
-    """Extract organization from model_id and uppercase first letter."""
-    org = model_id.split("/")[0]
-    return org.replace("-", " ").title()
-
+# model_name format is "{Organization}: {Model}", so we split on ": "
 model_organization = {
-    model_name: extract_organization(model_id)
-    for model_name, model_id in model_name_to_id.items()
+    model_name: model_name.split(": ")[0]
+    for model_name in model_metadata["model_name"]
 }
 
 # Get the list of available models
@@ -429,16 +425,6 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                         "PageRank Score": 2,
                     }
                 )
-                # Add Context Window column if it doesn't exist
-                if "Context Window" not in leaderboard_data.columns:
-                    leaderboard_data["Context Window"] = leaderboard_data["Model"].map(
-                        lambda x: model_context_window.get(x, "")
-                    )
-                    # Reorder columns to place Context Window after Model
-                    cols = leaderboard_data.columns.tolist()
-                    model_idx = cols.index("Model")
-                    cols.insert(model_idx + 1, cols.pop(cols.index("Context Window")))
-                    leaderboard_data = leaderboard_data[cols]
                 return leaderboard_data
         except Exception as e:
             print(f"No cached leaderboard found, computing from votes...")
@@ -456,7 +442,6 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             columns=[
                 "Rank",
                 "Model",
-                "Context Window",
                 "Elo Score",
                 "Win Rate",
                 "Conversation Efficiency Index",
@@ -590,17 +575,12 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
         else:
             mcs_result[model] = None
     mcs_result = pd.Series(mcs_result)
-
-    # Combine all results into a single DataFrame
-    # Add Context Window column by mapping model names to their context windows
-    context_window_values = [model_context_window.get(model, "") for model in elo_scores.index]
     organization_values = [model_organization.get(model, "") for model in elo_scores.index]
 
     leaderboard_data = pd.DataFrame(
         {
             "Model": elo_scores.index,
             "Organization": organization_values,
-            "Context Window": context_window_values,
             "Elo Score": elo_scores.values,
             "Win Rate": avr_scores.values,
             "Conversation Efficiency Index": cei_result.values,
@@ -730,7 +710,6 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             select_columns=[
                 "Rank",
                 "Model",
-                "Context Window",
                 "Elo Score",
                 "Conversation Efficiency Index",
                 "Consistency Score",
