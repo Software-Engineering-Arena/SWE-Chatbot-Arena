@@ -695,12 +695,12 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
         # Add title and description as a Markdown component
         gr.Markdown("# 🏆 LLM4SE Leaderboard")
         gr.Markdown(
-            "Community-Driven Evaluation of Top Foundation Models (FMs) in Software Engineering (SE) Tasks"
+            "Community-Driven Evaluation of Top Large Language Models (LLMs) in Software Engineering (SE) Tasks"
         )
         gr.Markdown(
-            "*The SWE-Model-Arena is an open-source platform designed to evaluate foundation models through human preference, "
+            "*The SWE-Model-Arena is an open-source platform designed to evaluate LLMs through human preference, "
             "fostering transparency and collaboration. This platform aims to empower the SE community to assess and compare the "
-            "performance of leading FMs in related tasks. For technical details, check out our [paper](https://arxiv.org/abs/2502.01860).*"
+            "performance of leading LLMs in related tasks. For technical details, check out our [paper](https://arxiv.org/abs/2502.01860).*"
         )
 
         # Initialize the leaderboard with the DataFrame containing the expected columns
@@ -714,7 +714,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 "Conversation Efficiency Index",
                 "Consistency Score",
             ],
-            search_columns=["Model", "Context Window"],
+            search_columns=["Model"],
             filter_columns=[
                 ColumnFilter(
                     "Elo Score",
@@ -786,14 +786,14 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
     with gr.Tab("⚔️Arena"):
         # Add title and description as a Markdown component
         gr.Markdown("# ⚔️ SWE-Model-Arena")
-        gr.Markdown("Explore and Test Top FMs with SE Tasks by Community Voting")
+        gr.Markdown("Explore and Test Top LLMs with SE Tasks by Community Voting")
 
         gr.Markdown("### 📜 How It Works")
         gr.Markdown(
             f"""
-            - **Blind Comparison**: Submit a SE-related query to two anonymous FMs randomly selected from up to {len(available_models)} top models from ChatGPT, Gemini, Grok, Claude, Qwen, Deepseek, Mistral, and others.
-            - **Interactive Voting**: Engage in multi-turn dialogues with both FMs and compare their responses. You can continue the conversation until you confidently choose the better model.
-            - **Fair Play Rules**: Votes are counted only if FM identities remain anonymous. Revealing a FM's identity disqualifies the session.
+            - **Blind Comparison**: Submit a SE-related query to two anonymous LLMs randomly selected from up to {len(available_models)} top models from ChatGPT, Gemini, Grok, Claude, Qwen, Deepseek, Mistral, and others.
+            - **Interactive Voting**: Engage in multi-turn dialogues with both LLMs and compare their responses. You can continue the conversation until you confidently choose the better model.
+            - **Fair Play Rules**: Votes are counted only if LLM identities remain anonymous. Revealing a LLM's identity disqualifies the session.
             """
         )
         gr.Markdown(f"*Note: Due to budget constraints, responses that take longer than {TIMEOUT} seconds to generate will be discarded.*")
