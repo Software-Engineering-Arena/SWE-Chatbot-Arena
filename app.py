@@ -751,38 +751,6 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                     type="slider",
                     label="Consistency Score"
                 ),
-                ColumnFilter(
-                    "Bradley-Terry Coefficient",
-                    min=-3.0,
-                    max=3.0,
-                    default=[-3.0, 3.0],
-                    type="slider",
-                    label="Bradley-Terry Coefficient"
-                ),
-                ColumnFilter(
-                    "Eigenvector Centrality Value",
-                    min=0.0,
-                    max=1.0,
-                    default=[0.0, 1.0],
-                    type="slider",
-                    label="Eigenvector Centrality Value"
-                ),
-                ColumnFilter(
-                    "Newman Modularity Score",
-                    min=-1.0,
-                    max=1.0,
-                    default=[-1.0, 1.0],
-                    type="slider",
-                    label="Newman Modularity Score"
-                ),
-                ColumnFilter(
-                    "PageRank Score",
-                    min=0.0,
-                    max=1.0,
-                    default=[0.0, 1.0],
-                    type="slider",
-                    label="PageRank Score"
-                ),
             ],
             datatype=[
                 "number",
