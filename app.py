@@ -710,6 +710,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             select_columns=[
                 "Rank",
                 "Model",
+                "Organization",
                 "Elo Score",
                 "Conversation Efficiency Index",
                 "Consistency Score",
