@@ -1,4 +1,5 @@
 *.env
 *.venv
 *.ipynb
+*.pyc
 .claude

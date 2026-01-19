@@ -54,6 +54,22 @@ model_context_window = model_metadata.set_index("model_name")[
     "context_window"
 ].to_dict()
 
+# Create a dictionary mapping model names to their model IDs
+model_name_to_id = model_metadata.set_index("model_name")[
+    "model_id"
+].to_dict()
+
+# Create a dictionary mapping model names to their organizations
+def extract_organization(model_id):
+    """Extract organization from model_id and uppercase first letter."""
+    org = model_id.split("/")[0]
+    return org.replace("-", " ").title()
+
+model_organization = {
+    model_name: extract_organization(model_id)
+    for model_name, model_id in model_name_to_id.items()
+}
+
 # Get the list of available models
 available_models = model_metadata["model_name"].tolist()
 
@@ -251,7 +267,10 @@ def chat_with_models(model_alias, models, conversation_state, timeout=TIMEOUT):
 
     def request_model_response():
         try:
-            request_params = {"model": models[model_alias], "messages": truncated_input}
+            # Get model_id from the model_name using the mapping
+            model_name = models[model_alias]
+            model_id = model_name_to_id.get(model_name, model_name)
+            request_params = {"model": model_id, "messages": truncated_input}
             response = openai_client.chat.completions.create(**request_params)
             model_response["content"] = response.choices[0].message.content
         except Exception as e:
@@ -575,10 +594,12 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
     # Combine all results into a single DataFrame
     # Add Context Window column by mapping model names to their context windows
     context_window_values = [model_context_window.get(model, "") for model in elo_scores.index]
+    organization_values = [model_organization.get(model, "") for model in elo_scores.index]
 
     leaderboard_data = pd.DataFrame(
         {
             "Model": elo_scores.index,
+            "Organization": organization_values,
             "Context Window": context_window_values,
             "Elo Score": elo_scores.values,
             "Win Rate": avr_scores.values,
@@ -929,7 +950,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
 
         def guardrail_check_se_relevance(user_input):
             """
-            Use gpt-oss-safeguard-20b to check if the user input is SE-related.
+            Use openai/gpt-oss-safeguard-20b to check if the user input is SE-related.
             Return True if it is SE-related, otherwise False.
             """
             # Example instructions for classification — adjust to your needs
@@ -946,7 +967,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             try:
                 # Make the chat completion call
                 response = openai_client.chat.completions.create(
-                    model="gpt-oss-safeguard-20b", messages=[system_message, user_message]
+                    model="openai/gpt-oss-safeguard-20b", messages=[system_message, user_message]
                 )
                 classification = response.choices[0].message.content.strip().lower()
                 # Check if the LLM responded with 'Yes'
@@ -1140,6 +1161,12 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             if repo_info:
                 display_content += f"\n\n### Repo-related URL:\n\n{repo_url}"
 
+            # Get model names and organizations
+            model_a_name = models_state["left"]
+            model_b_name = models_state["right"]
+            model_a_org = model_organization.get(model_a_name, "")
+            model_b_org = model_organization.get(model_b_name, "")
+
             # Return the updates for all 18 outputs.
             return (
                 # [0] guardrail_message: hide (since no guardrail issue)
@@ -1150,10 +1177,10 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 gr.update(interactive=True, visible=False),
                 # [3] user_prompt_md: display the user's query
                 gr.update(value=display_content, visible=True),
-                # [4] response_a_title: show title for Model A
-                gr.update(value="### Model A:", visible=True),
-                # [5] response_b_title: show title for Model B
-                gr.update(value="### Model B:", visible=True),
+                # [4] response_a_title: show title for Model A with organization
+                gr.update(value=f"### Organization: {model_a_org}\n### Model: {model_a_name}", visible=True),
+                # [5] response_b_title: show title for Model B with organization
+                gr.update(value=f"### Organization: {model_b_org}\n### Model: {model_b_name}", visible=True),
                 # [6] response_a: display Model A response
                 gr.update(value=response_a),
                 # [7] response_b: display Model B response
