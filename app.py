@@ -727,25 +727,25 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 ),
                 ColumnFilter(
                     "Win Rate",
-                    min=-0.1,
-                    max=1.1,
-                    default=[-0.1, 1.1],
+                    min=0,
+                    max=1,
+                    default=[0, 1],
                     type="slider",
                     label="Win Rate"
                 ),
                 ColumnFilter(
                     "Conversation Efficiency Index",
-                    min=-1.1,
-                    max=1.1,
-                    default=[-1.1, 1.1],
+                    min=0,
+                    max=1,
+                    default=[0, 1],
                     type="slider",
                     label="Conversation Efficiency Index"
                 ),
                 ColumnFilter(
                     "Consistency Score",
-                    min=-0.1,
-                    max=1.1,
-                    default=[-0.1, 1.1],
+                    min=0,
+                    max=1,
+                    default=[0, 1],
                     type="slider",
                     label="Consistency Score"
                 ),
