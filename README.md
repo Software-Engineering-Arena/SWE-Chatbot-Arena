@@ -1,5 +1,5 @@
 ---
-title: SWE-Model-Arena
+title: SWE-Chatbot-Arena
 emoji: 🎯
 colorFrom: green
 colorTo: red
@@ -11,9 +11,9 @@ pinned: false
 short_description: Chatbot arena for software engineering tasks
 ---
 
-# SWE-Model-Arena: An Interactive Platform for Evaluating Foundation Models in Software Engineering
+# SWE-Chatbot-Arena: An Interactive Platform for Evaluating Foundation Models in Software Engineering
 
-Welcome to **SWE-Model-Arena**, an open-source platform designed for evaluating software engineering-focused foundation models (FMs), particularly large language models (LLMs). SWE-Model-Arena benchmarks models in iterative, context-rich workflows that are characteristic of software engineering (SE) tasks.
+Welcome to **SWE-Chatbot-Arena**, an open-source platform designed for evaluating software engineering-focused foundation models (FMs), particularly large language models (LLMs). SWE-Chatbot-Arena benchmarks models in iterative, context-rich workflows that are characteristic of software engineering (SE) tasks.
 
 ## Key Features
 
@@ -28,9 +28,9 @@ Welcome to **SWE-Model-Arena**, an open-source platform designed for evaluating 
 - **Transparent, Open-Source Leaderboard**: View real-time model rankings across diverse SE workflows with full transparency.
 - **Intelligent Request Filtering**: Employ `gpt-oss-safeguard-20b` as a guardrail to automatically filter out non-software-engineering-related requests, ensuring focused and relevant evaluations.
 
-## Why SWE-Model-Arena?
+## Why SWE-Chatbot-Arena?
 
-Existing evaluation frameworks (e.g. [LMArena](https://lmarena.ai)) often don't address the complex, iterative nature of SE tasks. SWE-Model-Arena fills critical gaps by:
+Existing evaluation frameworks (e.g. [LMArena](https://lmarena.ai)) often don't address the complex, iterative nature of SE tasks. SWE-Chatbot-Arena fills critical gaps by:
 
 - Supporting context-rich, multi-turn evaluations to capture iterative workflows
 - Integrating repository-level context through RepoChat to simulate real-world development scenarios
@@ -52,7 +52,7 @@ Existing evaluation frameworks (e.g. [LMArena](https://lmarena.ai)) often don't 
 
 ### Usage
 
-1. Navigate to the [SWE-Model-Arena platform](https://huggingface.co/spaces/SE-Arena/SWE-Model-Arena)
+1. Navigate to the [SWE-Chatbot-Arena platform](https://huggingface.co/spaces/SE-Arena/SWE-Chatbot-Arena)
 2. Sign in with your Hugging Face account
 3. Enter your SE task prompt (optionally include a repository URL for RepoChat)
 4. Engage in multi-round interactions and vote on model performance
@@ -67,7 +67,7 @@ We welcome contributions from the community! Here's how you can help:
 
 ## Privacy Policy
 
-Your interactions are anonymized and used solely for improving SWE-Model-Arena and FM benchmarking. By using SWE-Model-Arena, you agree to our Terms of Service.
+Your interactions are anonymized and used solely for improving SWE-Chatbot-Arena and FM benchmarking. By using SWE-Chatbot-Arena, you agree to our Terms of Service.
 
 ## Future Plans
 
@@ -78,11 +78,11 @@ Your interactions are anonymized and used solely for improving SWE-Model-Arena a
 
 ## Contact
 
-For inquiries or feedback, please [open an issue](https://github.com/SE-Arena/SWE-Model-Arena/issues/new) in this repository. We welcome your contributions and suggestions!
+For inquiries or feedback, please [open an issue](https://github.com/SE-Arena/SWE-Chatbot-Arena/issues/new) in this repository. We welcome your contributions and suggestions!
 
 ## Citation
 
-Made with ❤️ for SWE-Model-Arena. If this work is useful to you, please consider citing our vision paper:
+Made with ❤️ for SWE-Chatbot-Arena. If this work is useful to you, please consider citing our vision paper:
 
 ```bibtex
 @inproceedings{zhao2025se,

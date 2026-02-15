@@ -34,7 +34,7 @@ openai_client = OpenAI(api_key=api_key, base_url=base_url)
 LEADERBOARD_REPO = "SWE-Arena/leaderboard_data"
 VOTE_REPO = "SWE-Arena/vote_data"
 CONVERSATION_REPO = "SWE-Arena/conversation_data"
-LEADERBOARD_FILE = "model_arena"
+LEADERBOARD_FILE = "chatbot_arena"
 
 # Timeout in seconds for model responses
 TIMEOUT = 90
@@ -1313,7 +1313,7 @@ def check_auth_on_load(request: gr.Request):
 
 # Suppress the deprecation warning for theme parameter until Gradio 6.0 is released
 warnings.filterwarnings('ignore', category=DeprecationWarning, message=".*'theme' parameter.*")
-with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
+with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
     user_authenticated = gr.State(False)
     models_state = gr.State({})
     conversation_state = gr.State({})
@@ -1328,7 +1328,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             "Community-Driven Evaluation of Top Large Language Models (LLMs) in Software Engineering (SE) Tasks"
         )
         gr.Markdown(
-            "*The SWE-Model-Arena is an open-source platform designed to evaluate LLMs through human preference, "
+            "*The SWE-Chatbot-Arena is an open-source platform designed to evaluate LLMs through human preference, "
             "fostering transparency and collaboration. This platform aims to empower the SE community to assess and compare the "
             "performance of leading LLMs in related tasks. For technical details, check out our [paper](https://arxiv.org/abs/2502.01860).*"
         )
@@ -1400,7 +1400,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
         # Add a citation block in Markdown
         gr.Markdown(
             """
-            Made with ❤️ for SWE-Model-Arena. If this work is useful to you, please consider citing our vision paper:
+            Made with ❤️ for SWE-Chatbot-Arena. If this work is useful to you, please consider citing our vision paper:
             ```
             @inproceedings{zhao2025se,
             title={SE Arena: An Interactive Platform for Evaluating Foundation Models in Software Engineering},
@@ -1415,7 +1415,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
         )
     with gr.Tab("⚔️Arena"):
         # Add title and description as a Markdown component
-        gr.Markdown("# ⚔️ SWE-Model-Arena")
+        gr.Markdown("# ⚔️ SWE-Chatbot-Arena")
         gr.Markdown("Explore and Test Top LLMs with SE Tasks by Community Voting")
 
         gr.Markdown("### 📜 How It Works")
