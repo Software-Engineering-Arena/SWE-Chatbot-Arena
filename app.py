@@ -9,7 +9,6 @@ import io
 import json
 import os
 import random
-import re
 import threading
 import warnings
 
@@ -17,7 +16,8 @@ import gradio as gr
 import pandas as pd
 
 from datetime import datetime
-from github import Github
+from github import Auth, Github
+from urllib.parse import urlparse
 from gradio_leaderboard import Leaderboard, ColumnFilter
 from huggingface_hub import upload_file, hf_hub_download, HfApi
 from openai import OpenAI
@@ -70,6 +70,264 @@ model_organization = {
 available_models = model_metadata["model_name"].tolist()
 
 
+# ---------------------------------------------------------------------------
+# URL parsing helpers
+# ---------------------------------------------------------------------------
+
+def _parse_url_path(url):
+    """Parse a URL and return (hostname, path_segments).
+
+    Returns:
+        tuple: (hostname: str, segments: list[str]) where segments
+               are the non-empty parts of the URL path.
+        Returns (None, []) if URL cannot be parsed.
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        segments = [s for s in parsed.path.split("/") if s]
+        return hostname, segments
+    except Exception:
+        return None, []
+
+
+# ---------------------------------------------------------------------------
+# GitHub
+# ---------------------------------------------------------------------------
+
+def _classify_github_url(segments):
+    """Classify a GitHub URL from its path segments into resource type + params."""
+    if len(segments) < 2:
+        return None
+
+    owner, repo = segments[0], segments[1]
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    base = {"owner": owner, "repo": repo}
+
+    if len(segments) == 2:
+        return {**base, "resource": None}
+
+    res = segments[2]
+
+    if res == "issues" and len(segments) >= 4:
+        return {**base, "resource": "issues", "id": segments[3]}
+    elif res == "pull" and len(segments) >= 4:
+        return {**base, "resource": "pull", "id": segments[3]}
+    elif res == "commit" and len(segments) >= 4:
+        return {**base, "resource": "commit", "sha": segments[3]}
+    elif res == "blob" and len(segments) >= 4:
+        return {**base, "resource": "blob", "branch": segments[3],
+                "path": "/".join(segments[4:]) if len(segments) > 4 else ""}
+    elif res == "tree" and len(segments) >= 4:
+        return {**base, "resource": "tree", "branch": segments[3],
+                "path": "/".join(segments[4:]) if len(segments) > 4 else ""}
+    elif res == "discussions" and len(segments) >= 4:
+        return {**base, "resource": "discussions", "id": segments[3]}
+    elif res == "releases" and len(segments) >= 5 and segments[3] == "tag":
+        return {**base, "resource": "releases", "tag": segments[4]}
+    elif res == "compare" and len(segments) >= 4:
+        return {**base, "resource": "compare", "spec": segments[3]}
+    elif res == "actions" and len(segments) >= 5 and segments[3] == "runs":
+        return {**base, "resource": "actions", "run_id": segments[4]}
+    elif res == "wiki":
+        page = segments[3] if len(segments) >= 4 else None
+        return {**base, "resource": "wiki", "page": page}
+    else:
+        return {**base, "resource": "unknown"}
+
+
+# -- GitHub formatters -------------------------------------------------------
+
+def _fmt_github_repo(repo):
+    parts = [f"Repository: {repo.full_name}"]
+    if repo.description:
+        parts.append(f"Description: {repo.description}")
+    try:
+        readme = repo.get_readme()
+        content = readme.decoded_content.decode("utf-8", errors="replace")
+        parts.append(f"README (first 2000 chars):\n{content[:2000]}")
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def _fmt_github_issue(repo, issue_id):
+    issue = repo.get_issue(issue_id)
+    parts = [
+        f"Issue #{issue.number}: {issue.title}",
+        f"State: {issue.state}",
+        f"Body:\n{issue.body or '(empty)'}",
+    ]
+    comments = issue.get_comments()
+    comment_texts = []
+    for i, c in enumerate(comments):
+        if i >= 10:
+            break
+        comment_texts.append(f"  Comment by {c.user.login}:\n  {c.body}")
+    if comment_texts:
+        parts.append("Comments (first 10):\n" + "\n---\n".join(comment_texts))
+    return "\n\n".join(parts)
+
+
+def _fmt_github_pr(repo, pr_id):
+    pr = repo.get_pull(pr_id)
+    parts = [
+        f"Pull Request #{pr.number}: {pr.title}",
+        f"State: {pr.state}  Merged: {pr.merged}",
+        f"Body:\n{pr.body or '(empty)'}",
+    ]
+    diff_parts = []
+    for f in pr.get_files():
+        header = f"--- {f.filename} ({f.status}, +{f.additions}/-{f.deletions})"
+        patch = f.patch or "(binary or too large)"
+        diff_parts.append(f"{header}\n{patch}")
+    if diff_parts:
+        diff_text = "\n\n".join(diff_parts)
+        if len(diff_text) > 5000:
+            diff_text = diff_text[:5000] + "\n... (diff truncated)"
+        parts.append(f"Diff:\n{diff_text}")
+    return "\n\n".join(parts)
+
+
+def _fmt_github_commit(repo, sha):
+    commit = repo.get_commit(sha)
+    parts = [
+        f"Commit: {commit.sha}",
+        f"Message: {commit.commit.message}",
+        f"Author: {commit.commit.author.name}",
+        f"Stats: +{commit.stats.additions}/-{commit.stats.deletions}",
+    ]
+    file_patches = []
+    for f in commit.files:
+        file_patches.append(f"  {f.filename} ({f.status}): {f.patch or '(binary)'}")
+    if file_patches:
+        patch_text = "\n".join(file_patches)
+        if len(patch_text) > 5000:
+            patch_text = patch_text[:5000] + "\n... (patch truncated)"
+        parts.append(f"Files changed:\n{patch_text}")
+    return "\n\n".join(parts)
+
+
+def _fmt_github_blob(repo, branch, path):
+    contents = repo.get_contents(path, ref=branch)
+    if isinstance(contents, list):
+        listing = "\n".join(f"  {c.path} ({c.type})" for c in contents)
+        return f"Directory listing at {branch}/{path}:\n{listing}"
+    content = contents.decoded_content.decode("utf-8", errors="replace")
+    if len(content) > 5000:
+        content = content[:5000] + "\n... (content truncated)"
+    return f"File: {path} (branch: {branch})\n\n{content}"
+
+
+def _fmt_github_tree(repo, branch, path):
+    if path:
+        contents = repo.get_contents(path, ref=branch)
+        if not isinstance(contents, list):
+            contents = [contents]
+    else:
+        contents = repo.get_contents("", ref=branch)
+    listing = "\n".join(f"  {c.path} ({c.type}, {c.size} bytes)" for c in contents)
+    return f"Tree at {branch}/{path or '(root)'}:\n{listing}"
+
+
+_DISCUSSION_GRAPHQL_SCHEMA = """
+    title
+    body
+    number
+    author { login }
+    comments(first: 10) {
+        nodes {
+            body
+            author { login }
+        }
+    }
+"""
+
+
+def _fmt_github_discussion(repo, discussion_id):
+    try:
+        discussion = repo.get_discussion(discussion_id, _DISCUSSION_GRAPHQL_SCHEMA)
+        parts = [
+            f"Discussion #{discussion.number}: {discussion.title}",
+            f"Body:\n{discussion.body or '(empty)'}",
+        ]
+        if hasattr(discussion, "comments") and discussion.comments:
+            comment_texts = []
+            for c in discussion.comments:
+                author = c.author.login if hasattr(c, "author") and c.author else "unknown"
+                comment_texts.append(f"  Comment by {author}: {c.body}")
+            if comment_texts:
+                parts.append("Comments:\n" + "\n---\n".join(comment_texts))
+        return "\n\n".join(parts)
+    except Exception as e:
+        print(f"Discussion fetch failed (GraphQL): {e}")
+        return None
+
+
+def _fmt_github_release(repo, tag):
+    release = repo.get_release(tag)
+    parts = [
+        f"Release: {release.title or release.tag_name}",
+        f"Tag: {release.tag_name}",
+        f"Body:\n{release.body or '(empty)'}",
+    ]
+    return "\n\n".join(parts)
+
+
+def _fmt_github_compare(repo, spec):
+    if "..." in spec:
+        base, head = spec.split("...", 1)
+    elif ".." in spec:
+        base, head = spec.split("..", 1)
+    else:
+        return None
+    comparison = repo.compare(base, head)
+    parts = [
+        f"Comparison: {base}...{head}",
+        f"Status: {comparison.status}",
+        f"Ahead by: {comparison.ahead_by}, Behind by: {comparison.behind_by}",
+        f"Total commits: {comparison.total_commits}",
+    ]
+    commit_summaries = []
+    for c in comparison.commits[:20]:
+        commit_summaries.append(f"  {c.sha[:8]}: {c.commit.message.splitlines()[0]}")
+    if commit_summaries:
+        parts.append("Commits:\n" + "\n".join(commit_summaries))
+    file_summaries = []
+    for f in comparison.files[:30]:
+        file_summaries.append(f"  {f.filename} ({f.status}, +{f.additions}/-{f.deletions})")
+    if file_summaries:
+        parts.append("Files changed:\n" + "\n".join(file_summaries))
+    return "\n\n".join(parts)
+
+
+def _fmt_github_actions(repo, run_id):
+    run = repo.get_workflow_run(run_id)
+    parts = [
+        f"Workflow Run: {run.name} #{run.run_number}",
+        f"Status: {run.status}  Conclusion: {run.conclusion}",
+        f"SHA: {run.head_sha}",
+    ]
+    try:
+        jobs = run.jobs()
+        for job in jobs:
+            if job.conclusion == "failure":
+                parts.append(f"Failed job: {job.name}")
+                for step in job.steps:
+                    if step.conclusion == "failure":
+                        parts.append(f"  Failed step: {step.name}")
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def _fmt_github_wiki(owner, repo_name, page):
+    if page:
+        return f"Wiki page: {page} (from {owner}/{repo_name}/wiki)\nNote: Wiki content cannot be fetched via API."
+    return f"Wiki: {owner}/{repo_name}/wiki\nNote: Wiki content cannot be fetched via API."
+
+
 def fetch_github_content(url):
     """Fetch detailed content from a GitHub URL using PyGithub."""
     token = os.getenv("GITHUB_TOKEN")
@@ -77,44 +335,262 @@ def fetch_github_content(url):
         print("GITHUB_TOKEN not set.")
         return None
 
-    g = Github(token)
+    g = Github(auth=Auth.Token(token))
+    hostname, segments = _parse_url_path(url)
+
+    if not hostname or "github.com" not in hostname:
+        return None
+
+    info = _classify_github_url(segments)
+    if not info:
+        return None
 
     try:
-        match = re.match(
-            r"https?://github\.com/([^/]+)/([^/]+)/(commit|pull|issues|discussions)/([a-z0-9]+)",
-            url,
-        )
+        repo = g.get_repo(f"{info['owner']}/{info['repo']}")
+        resource = info["resource"]
 
-        if not match:
-            repo_part = re.match(r"https?://github\.com/([^/]+)/([^/]+)/?", url)
-            if repo_part:
-                owner, repo = repo_part.groups()
-                repo = g.get_repo(f"{owner}/{repo}")
-                try:
-                    readme = repo.get_readme()
-                    return readme.decoded_content.decode()
-                except:
-                    return repo.description
+        if resource is None:
+            return _fmt_github_repo(repo)
+        elif resource == "issues":
+            return _fmt_github_issue(repo, int(info["id"]))
+        elif resource == "pull":
+            return _fmt_github_pr(repo, int(info["id"]))
+        elif resource == "commit":
+            return _fmt_github_commit(repo, info["sha"])
+        elif resource == "blob":
+            return _fmt_github_blob(repo, info["branch"], info["path"])
+        elif resource == "tree":
+            return _fmt_github_tree(repo, info["branch"], info.get("path", ""))
+        elif resource == "discussions":
+            return _fmt_github_discussion(repo, int(info["id"]))
+        elif resource == "releases":
+            return _fmt_github_release(repo, info["tag"])
+        elif resource == "compare":
+            return _fmt_github_compare(repo, info["spec"])
+        elif resource == "actions":
+            return _fmt_github_actions(repo, int(info["run_id"]))
+        elif resource == "wiki":
+            return _fmt_github_wiki(info["owner"], info["repo"], info.get("page"))
+        else:
             return None
-
-        owner, repo, category, identifier = match.groups()
-        repo = g.get_repo(f"{owner}/{repo}")
-
-        if category == "commit":
-            commit = repo.get_commit(identifier)
-            return commit.__dict__
-
-        elif category in ["pull", "issues"]:
-            obj = (
-                repo.get_pull(int(identifier))
-                if category == "pull"
-                else repo.get_issue(int(identifier))
-            )
-        return obj.__dict__
-
     except Exception as e:
         print(f"GitHub API error: {e}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# GitLab
+# ---------------------------------------------------------------------------
+
+def _classify_gitlab_url(segments):
+    """Classify a GitLab URL from its path segments.
+
+    GitLab uses /-/ as separator between project path and resource.
+    Project paths can be nested: group/subgroup/project.
+    """
+    try:
+        dash_idx = segments.index("-")
+    except ValueError:
+        # No /-/ separator -- treat all segments as the project path
+        if len(segments) >= 2:
+            return {"project_path": "/".join(segments), "resource": None}
+        return None
+
+    project_path = "/".join(segments[:dash_idx])
+    res_segments = segments[dash_idx + 1:]
+
+    if not project_path or not res_segments:
+        return {"project_path": project_path, "resource": None}
+
+    res = res_segments[0]
+
+    if res == "issues" and len(res_segments) >= 2:
+        return {"project_path": project_path, "resource": "issues", "id": res_segments[1]}
+    elif res == "merge_requests" and len(res_segments) >= 2:
+        return {"project_path": project_path, "resource": "merge_requests", "id": res_segments[1]}
+    elif res in ("commit", "commits") and len(res_segments) >= 2:
+        return {"project_path": project_path, "resource": "commit", "sha": res_segments[1]}
+    elif res == "blob" and len(res_segments) >= 2:
+        branch = res_segments[1]
+        file_path = "/".join(res_segments[2:]) if len(res_segments) > 2 else ""
+        return {"project_path": project_path, "resource": "blob", "branch": branch, "path": file_path}
+    elif res == "tree" and len(res_segments) >= 2:
+        branch = res_segments[1]
+        tree_path = "/".join(res_segments[2:]) if len(res_segments) > 2 else ""
+        return {"project_path": project_path, "resource": "tree", "branch": branch, "path": tree_path}
+    elif res == "releases" and len(res_segments) >= 2:
+        return {"project_path": project_path, "resource": "releases", "tag": res_segments[1]}
+    elif res == "compare" and len(res_segments) >= 2:
+        return {"project_path": project_path, "resource": "compare", "spec": res_segments[1]}
+    elif res == "pipelines" and len(res_segments) >= 2:
+        return {"project_path": project_path, "resource": "pipelines", "id": res_segments[1]}
+    elif res == "wikis":
+        page = res_segments[1] if len(res_segments) >= 2 else None
+        return {"project_path": project_path, "resource": "wikis", "page": page}
+    else:
+        return {"project_path": project_path, "resource": "unknown"}
+
+
+# -- GitLab formatters -------------------------------------------------------
+
+def _fmt_gitlab_repo(project):
+    parts = [f"Repository: {project.path_with_namespace}"]
+    if project.description:
+        parts.append(f"Description: {project.description}")
+    try:
+        readme = project.files.get(file_path="README.md", ref=project.default_branch)
+        content = readme.decode().decode("utf-8", errors="replace")
+        parts.append(f"README (first 2000 chars):\n{content[:2000]}")
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def _fmt_gitlab_issue(project, issue_id):
+    issue = project.issues.get(issue_id)
+    parts = [
+        f"Issue #{issue.iid}: {issue.title}",
+        f"State: {issue.state}",
+        f"Body:\n{issue.description or '(empty)'}",
+    ]
+    notes = issue.notes.list(get_all=False, per_page=10)
+    note_texts = [f"  Comment by {n.author['username']}: {n.body}" for n in notes]
+    if note_texts:
+        parts.append("Comments (first 10):\n" + "\n---\n".join(note_texts))
+    return "\n\n".join(parts)
+
+
+def _fmt_gitlab_mr(project, mr_id):
+    mr = project.mergerequests.get(mr_id)
+    parts = [
+        f"Merge Request !{mr.iid}: {mr.title}",
+        f"State: {mr.state}",
+        f"Body:\n{mr.description or '(empty)'}",
+    ]
+    try:
+        changes = mr.changes()
+        if isinstance(changes, dict) and "changes" in changes:
+            diff_parts = []
+            for change in changes["changes"][:30]:
+                diff_parts.append(f"  {change.get('new_path', '?')}: {change.get('diff', '')[:500]}")
+            if diff_parts:
+                diff_text = "\n".join(diff_parts)
+                if len(diff_text) > 5000:
+                    diff_text = diff_text[:5000] + "\n... (diff truncated)"
+                parts.append(f"Changes:\n{diff_text}")
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def _fmt_gitlab_commit(project, sha):
+    commit = project.commits.get(sha)
+    parts = [
+        f"Commit: {commit.id}",
+        f"Title: {commit.title}",
+        f"Message: {commit.message}",
+        f"Author: {commit.author_name}",
+    ]
+    try:
+        diffs = commit.diff()
+        diff_parts = []
+        for d in diffs[:30]:
+            diff_parts.append(f"  {d.get('new_path', '?')}: {d.get('diff', '')[:500]}")
+        if diff_parts:
+            diff_text = "\n".join(diff_parts)
+            if len(diff_text) > 5000:
+                diff_text = diff_text[:5000] + "\n... (diff truncated)"
+            parts.append(f"Diff:\n{diff_text}")
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def _fmt_gitlab_blob(project, branch, path):
+    f = project.files.get(file_path=path, ref=branch)
+    content = f.decode().decode("utf-8", errors="replace")
+    if len(content) > 5000:
+        content = content[:5000] + "\n... (content truncated)"
+    return f"File: {path} (branch: {branch})\n\n{content}"
+
+
+def _fmt_gitlab_tree(project, branch, path):
+    items = project.repository_tree(path=path or "", ref=branch, get_all=False, per_page=100)
+    listing = "\n".join(f"  {item['path']} ({item['type']})" for item in items)
+    return f"Tree at {branch}/{path or '(root)'}:\n{listing}"
+
+
+def _fmt_gitlab_release(project, tag):
+    release = project.releases.get(tag)
+    parts = [
+        f"Release: {release.name or release.tag_name}",
+        f"Tag: {release.tag_name}",
+        f"Description:\n{release.description or '(empty)'}",
+    ]
+    return "\n\n".join(parts)
+
+
+def _fmt_gitlab_compare(project, spec):
+    if "..." in spec:
+        base, head = spec.split("...", 1)
+    elif ".." in spec:
+        base, head = spec.split("..", 1)
+    else:
+        return None
+    result = project.repository_compare(base, head)
+    parts = [f"Comparison: {base}...{head}"]
+    if isinstance(result, dict):
+        commits = result.get("commits", [])
+        commit_summaries = []
+        for c in commits[:20]:
+            commit_summaries.append(f"  {c.get('short_id', '?')}: {c.get('title', '')}")
+        if commit_summaries:
+            parts.append("Commits:\n" + "\n".join(commit_summaries))
+        diffs = result.get("diffs", [])
+        diff_parts = []
+        for d in diffs[:30]:
+            diff_parts.append(f"  {d.get('new_path', '?')}: {d.get('diff', '')[:500]}")
+        if diff_parts:
+            diff_text = "\n".join(diff_parts)
+            if len(diff_text) > 5000:
+                diff_text = diff_text[:5000] + "\n... (diff truncated)"
+            parts.append(f"Diffs:\n{diff_text}")
+    return "\n\n".join(parts)
+
+
+def _fmt_gitlab_pipeline(project, pipeline_id):
+    pipeline = project.pipelines.get(pipeline_id)
+    parts = [
+        f"Pipeline #{pipeline.id}",
+        f"Status: {pipeline.status}",
+        f"Ref: {pipeline.ref}",
+        f"SHA: {pipeline.sha}",
+    ]
+    try:
+        jobs = pipeline.jobs.list(get_all=False, per_page=20)
+        failed_jobs = [j for j in jobs if j.status == "failed"]
+        if failed_jobs:
+            parts.append("Failed jobs:")
+            for j in failed_jobs:
+                parts.append(f"  {j.name}: {j.status} (stage: {j.stage})")
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def _fmt_gitlab_wiki(project, page):
+    if page:
+        try:
+            wiki_page = project.wikis.get(page)
+            return f"Wiki page: {wiki_page.title}\n\n{wiki_page.content}"
+        except Exception:
+            return f"Wiki page: {page}\nNote: Could not fetch wiki page content."
+    try:
+        pages = project.wikis.list(get_all=False, per_page=20)
+        listing = "\n".join(f"  {p.slug}: {p.title}" for p in pages)
+        return f"Wiki pages:\n{listing}"
+    except Exception:
+        return "Wiki: Could not fetch wiki pages."
 
 
 def fetch_gitlab_content(url):
@@ -123,43 +599,184 @@ def fetch_gitlab_content(url):
     if not token:
         print("GITLAB_TOKEN not set.")
         return None
-    gl = gitlab.Gitlab(private_token=token)
+
+    gl = gitlab.Gitlab("https://gitlab.com", private_token=token)
+    hostname, segments = _parse_url_path(url)
+
+    if not hostname or "gitlab.com" not in hostname:
+        return None
+
+    info = _classify_gitlab_url(segments)
+    if not info:
+        return None
 
     try:
-        match = re.match(
-            r"https?://gitlab\.com/([^/]+)/([^/]+)/-/?(commit|merge_requests|issues)/([^/]+)",
-            url,
-        )
-        if not match:
-            repo_part = re.match(r"https?://gitlab\.com/([^/]+)/([^/]+)/?", url)
-            if repo_part:
-                owner, repo = repo_part.groups()
-                project = gl.projects.get(f"{owner}/{repo}")
-                try:
-                    readme = project.files.get(file_path="README.md", ref="master")
-                    return readme.decode()
-                except gitlab.exceptions.GitlabGetError:
-                    return project.description
+        project = gl.projects.get(info["project_path"])
+        resource = info["resource"]
+
+        if resource is None:
+            return _fmt_gitlab_repo(project)
+        elif resource == "issues":
+            return _fmt_gitlab_issue(project, int(info["id"]))
+        elif resource == "merge_requests":
+            return _fmt_gitlab_mr(project, int(info["id"]))
+        elif resource == "commit":
+            return _fmt_gitlab_commit(project, info["sha"])
+        elif resource == "blob":
+            return _fmt_gitlab_blob(project, info["branch"], info["path"])
+        elif resource == "tree":
+            return _fmt_gitlab_tree(project, info["branch"], info.get("path", ""))
+        elif resource == "releases":
+            return _fmt_gitlab_release(project, info["tag"])
+        elif resource == "compare":
+            return _fmt_gitlab_compare(project, info["spec"])
+        elif resource == "pipelines":
+            return _fmt_gitlab_pipeline(project, int(info["id"]))
+        elif resource == "wikis":
+            return _fmt_gitlab_wiki(project, info.get("page"))
+        else:
             return None
-
-        owner, repo, category, identifier = match.groups()
-        project = gl.projects.get(f"{owner}/{repo}")
-
-        if category == "commit":
-            commit = project.commits.get(identifier)
-            return commit.__dict__
-
-        elif category == "merge_requests":
-            merge_request = project.mergerequests.get(int(identifier))
-            return merge_request.__dict__
-
-        elif category == "issues":
-            issue = project.issues.get(int(identifier))
-            return issue.__dict__
-
     except Exception as e:
         print(f"GitLab API error: {e}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# HuggingFace
+# ---------------------------------------------------------------------------
+
+def _classify_huggingface_url(segments):
+    """Classify a HuggingFace URL from its path segments.
+
+    HF URLs:
+    - huggingface.co/{user}/{repo}           -> model
+    - huggingface.co/datasets/{user}/{repo}  -> dataset
+    - huggingface.co/spaces/{user}/{repo}    -> space
+    """
+    if not segments:
+        return None
+
+    # Detect repo_type prefix
+    repo_type = None
+    segs = list(segments)
+    if segs[0] in ("datasets", "spaces"):
+        repo_type = segs[0].rstrip("s")  # "dataset" or "space"
+        segs = segs[1:]
+
+    if len(segs) < 2:
+        return None
+
+    repo_id = f"{segs[0]}/{segs[1]}"
+    base = {"repo_id": repo_id, "repo_type": repo_type}
+
+    if len(segs) == 2:
+        return {**base, "resource": None}
+
+    res = segs[2]
+
+    if res == "blob" and len(segs) >= 4:
+        return {**base, "resource": "blob", "revision": segs[3],
+                "path": "/".join(segs[4:]) if len(segs) > 4 else ""}
+    elif res == "resolve" and len(segs) >= 4:
+        return {**base, "resource": "resolve", "revision": segs[3],
+                "path": "/".join(segs[4:]) if len(segs) > 4 else ""}
+    elif res == "tree" and len(segs) >= 4:
+        return {**base, "resource": "tree", "revision": segs[3],
+                "path": "/".join(segs[4:]) if len(segs) > 4 else ""}
+    elif res == "commit" and len(segs) >= 4:
+        return {**base, "resource": "commit", "sha": segs[3]}
+    elif res == "discussions" and len(segs) >= 4:
+        return {**base, "resource": "discussions", "num": segs[3]}
+    else:
+        return {**base, "resource": "unknown"}
+
+
+# -- HuggingFace formatters --------------------------------------------------
+
+def _fmt_hf_repo(api, repo_id, repo_type):
+    info = api.repo_info(repo_id=repo_id, repo_type=repo_type)
+    parts = [f"Repository: {repo_id}"]
+    if hasattr(info, "description") and info.description:
+        parts.append(f"Description: {info.description}")
+    if hasattr(info, "card_data") and info.card_data:
+        parts.append(f"Card data: {str(info.card_data)[:1000]}")
+    try:
+        readme_path = api.hf_hub_download(
+            repo_id=repo_id, filename="README.md", repo_type=repo_type
+        )
+        with open(readme_path, "r", errors="replace") as f:
+            content = f.read()[:2000]
+        parts.append(f"README (first 2000 chars):\n{content}")
+    except Exception:
+        pass
+    return "\n\n".join(parts)
+
+
+def _fmt_hf_commit(api, repo_id, repo_type, sha):
+    commits = api.list_repo_commits(repo_id=repo_id, revision=sha, repo_type=repo_type)
+    if commits:
+        c = commits[0]
+        return (
+            f"Commit: {c.commit_id}\n"
+            f"Title: {c.title}\n"
+            f"Message: {c.message}\n"
+            f"Authors: {', '.join(c.authors) if c.authors else 'unknown'}\n"
+            f"Date: {c.created_at}"
+        )
+    return None
+
+
+def _fmt_hf_discussion(api, repo_id, repo_type, discussion_num):
+    discussion = api.get_discussion_details(
+        repo_id=repo_id, discussion_num=discussion_num, repo_type=repo_type
+    )
+    parts = [
+        f"Discussion #{discussion.num}: {discussion.title}",
+        f"Status: {discussion.status}",
+        f"Author: {discussion.author}",
+        f"Is Pull Request: {discussion.is_pull_request}",
+    ]
+    comment_texts = []
+    for event in discussion.events:
+        if hasattr(event, "content") and event.content:
+            author = event.author if hasattr(event, "author") else "unknown"
+            comment_texts.append(f"  {author}: {event.content[:500]}")
+        if len(comment_texts) >= 10:
+            break
+    if comment_texts:
+        parts.append("Comments:\n" + "\n---\n".join(comment_texts))
+    return "\n\n".join(parts)
+
+
+def _fmt_hf_file(api, repo_id, repo_type, revision, path):
+    local_path = api.hf_hub_download(
+        repo_id=repo_id, filename=path, revision=revision, repo_type=repo_type
+    )
+    try:
+        with open(local_path, "r", errors="replace") as f:
+            content = f.read()
+        if len(content) > 5000:
+            content = content[:5000] + "\n... (content truncated)"
+        return f"File: {path} (revision: {revision})\n\n{content}"
+    except Exception:
+        return f"File: {path} (revision: {revision})\n(binary or unreadable file)"
+
+
+def _fmt_hf_tree(api, repo_id, repo_type, revision, path):
+    items = api.list_repo_tree(
+        repo_id=repo_id, path_in_repo=path or None,
+        revision=revision, repo_type=repo_type
+    )
+    listing = []
+    for item in items:
+        if hasattr(item, "size") and item.size is not None:
+            listing.append(f"  {item.rfilename} (file, {item.size} bytes)")
+        else:
+            listing.append(f"  {item.rfilename} (folder)")
+        if len(listing) >= 100:
+            listing.append("  ... (truncated)")
+            break
+    return f"Tree at {revision}/{path or '(root)'}:\n" + "\n".join(listing)
 
 
 def fetch_huggingface_content(url):
@@ -170,43 +787,53 @@ def fetch_huggingface_content(url):
         return None
 
     api = HfApi(token=token)
+    hostname, segments = _parse_url_path(url)
+
+    if not hostname or "huggingface.co" not in hostname:
+        return None
+
+    info = _classify_huggingface_url(segments)
+    if not info:
+        return None
 
     try:
-        if "/commit/" in url:
-            commit_hash = url.split("/commit/")[-1]
-            repo_id = url.split("/commit/")[0].split("huggingface.co/")[-1]
-            commits = api.list_repo_commits(repo_id=repo_id, revision=commit_hash)
-            if commits:
-                commit = commits[0]
-                return commit.__dict__
-            return None
+        resource = info["resource"]
+        repo_id = info["repo_id"]
+        repo_type = info["repo_type"]
 
-        elif "/discussions/" in url:
-            discussion_num = int(url.split("/discussions/")[-1])
-            repo_id = url.split("/discussions/")[0].split("/huggingface.co/")[-1]
-            discussion = api.get_discussion_details(
-                repo_id=repo_id, discussion_num=discussion_num
-            )
-            return discussion.__dict__
-
+        if resource is None:
+            return _fmt_hf_repo(api, repo_id, repo_type)
+        elif resource == "commit":
+            return _fmt_hf_commit(api, repo_id, repo_type, info["sha"])
+        elif resource == "discussions":
+            return _fmt_hf_discussion(api, repo_id, repo_type, int(info["num"]))
+        elif resource in ("blob", "resolve"):
+            return _fmt_hf_file(api, repo_id, repo_type, info["revision"], info["path"])
+        elif resource == "tree":
+            return _fmt_hf_tree(api, repo_id, repo_type, info["revision"], info.get("path", ""))
         else:
-            repo_id = url.split("huggingface.co/")[-1]
-            repo_info = api.repo_info(repo_id=repo_id)
-            return repo_info.__dict__
-
+            return None
     except Exception as e:
         print(f"Hugging Face API error: {e}")
-    return None
+        return None
 
+
+# ---------------------------------------------------------------------------
+# URL router
+# ---------------------------------------------------------------------------
 
 def fetch_url_content(url):
     """Main URL content fetcher that routes to platform-specific handlers."""
+    if not url or not url.strip():
+        return ""
+    url = url.strip()
     try:
-        if "github.com" in url:
+        hostname, _ = _parse_url_path(url)
+        if hostname and "github.com" in hostname:
             return fetch_github_content(url)
-        elif "gitlab.com" in url:
+        elif hostname and "gitlab.com" in hostname:
             return fetch_gitlab_content(url)
-        elif "huggingface.co" in url:
+        elif hostname and "huggingface.co" in hostname:
             return fetch_huggingface_content(url)
     except Exception as e:
         print(f"Error fetching URL content: {e}")
@@ -392,9 +1019,9 @@ def load_content_from_hf(repo_name):
                 repo_id=repo_name, filename=file, repo_type="dataset"
             )
             with open(local_path, "r") as f:
-                data = json.load(f)
-                data["timestamp"] = file.split("/")[-1].split(".")[0]
-                data.append(data)
+                entry = json.load(f)
+                entry["timestamp"] = file.split("/")[-1].split(".")[0]
+                data.append(entry)
         return data
 
     except:
@@ -413,18 +1040,19 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             with open(cached_path, "r") as f:
                 leaderboard_data = pd.read_json(f)
                 # Round all numeric columns to two decimal places
-                leaderboard_data = leaderboard_data.round(
-                    {
-                        "Elo Score": 2,
-                        "Win Rate": 2,
-                        "Conversation Efficiency Index": 2,
-                        "Consistency Score": 2,
-                        "Bradley-Terry Coefficient": 2,
-                        "Eigenvector Centrality Value": 2,
-                        "Newman Modularity Score": 2,
-                        "PageRank Score": 2,
-                    }
-                )
+                round_cols = {
+                    "Elo Score": 2,
+                    "Win Rate": 2,
+                    "Conversation Efficiency Index": 2,
+                    "Consistency Score": 2,
+                    "Bradley-Terry Coefficient": 2,
+                    "Eigenvector Centrality Value": 2,
+                    "Newman Modularity Score": 2,
+                    "PageRank Score": 2,
+                }
+                for col, decimals in round_cols.items():
+                    if col in leaderboard_data.columns:
+                        leaderboard_data[col] = pd.to_numeric(leaderboard_data[col], errors="coerce").round(decimals)
                 return leaderboard_data
         except Exception as e:
             print(f"No cached leaderboard found, computing from votes...")
@@ -579,7 +1207,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
 
     leaderboard_data = pd.DataFrame(
         {
-            "Model": elo_scores.index,
+            "Model": [name.split(": ", 1)[-1] for name in elo_scores.index],
             "Organization": organization_values,
             "Elo Score": elo_scores.values,
             "Win Rate": avr_scores.values,
@@ -593,16 +1221,17 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
     )
 
     # Round all numeric columns to two decimal places
-    leaderboard_data = leaderboard_data.round(
-        {
-            "Elo Score": 2,
-            "Win Rate": 2,
-            "Bradley-Terry Coefficient": 2,
-            "Eigenvector Centrality Value": 2,
-            "Newman Modularity Score": 2,
-            "PageRank Score": 2,
-        }
-    )
+    round_cols = {
+        "Elo Score": 2,
+        "Win Rate": 2,
+        "Bradley-Terry Coefficient": 2,
+        "Eigenvector Centrality Value": 2,
+        "Newman Modularity Score": 2,
+        "PageRank Score": 2,
+    }
+    for col, decimals in round_cols.items():
+        if col in leaderboard_data.columns:
+            leaderboard_data[col] = pd.to_numeric(leaderboard_data[col], errors="coerce").round(decimals)
 
     # Add a Rank column based on Elo scores
     leaderboard_data["Rank"] = (
@@ -1058,10 +1687,10 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 return (
                     # [0] guardrail_message: hide
                     gr.update(visible=False),
-                    # [1] shared_input: re-enable and clear
-                    gr.update(value="", interactive=True, visible=True),
-                    # [2] repo_url: re-enable and clear
-                    gr.update(value="", interactive=True, visible=True),
+                    # [1] shared_input: re-enable, preserve user input
+                    gr.update(interactive=True, visible=True),
+                    # [2] repo_url: re-enable, preserve user input
+                    gr.update(interactive=True, visible=True),
                     # [3] user_prompt_md: hide
                     gr.update(value="", visible=False),
                     # [4] response_a_title: hide
@@ -1098,10 +1727,10 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 return (
                     # [0] guardrail_message: show error message
                     gr.update(value=f"### Error: {str(e)}", visible=True),
-                    # [1] shared_input: re-enable and clear
-                    gr.update(value="", interactive=True, visible=True),
-                    # [2] repo_url: re-enable and clear
-                    gr.update(value="", interactive=True, visible=True),
+                    # [1] shared_input: re-enable, preserve user input
+                    gr.update(interactive=True, visible=True),
+                    # [2] repo_url: re-enable, preserve user input
+                    gr.update(interactive=True, visible=True),
                     # [3] user_prompt_md: hide
                     gr.update(value="", visible=False),
                     # [4] response_a_title: hide
@@ -1141,12 +1770,6 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             if repo_info:
                 display_content += f"\n\n### Repo-related URL:\n\n{repo_url}"
 
-            # Get model names and organizations
-            model_a_name = models_state["left"]
-            model_b_name = models_state["right"]
-            model_a_org = model_organization.get(model_a_name, "")
-            model_b_org = model_organization.get(model_b_name, "")
-
             # Return the updates for all 18 outputs.
             return (
                 # [0] guardrail_message: hide (since no guardrail issue)
@@ -1157,10 +1780,10 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 gr.update(interactive=True, visible=False),
                 # [3] user_prompt_md: display the user's query
                 gr.update(value=display_content, visible=True),
-                # [4] response_a_title: show title for Model A with organization
-                gr.update(value=f"### Organization: {model_a_org}\n### Model: {model_a_name}", visible=True),
-                # [5] response_b_title: show title for Model B with organization
-                gr.update(value=f"### Organization: {model_b_org}\n### Model: {model_b_name}", visible=True),
+                # [4] response_a_title: show anonymized title for Model A
+                gr.update(value="### Model A", visible=True),
+                # [5] response_b_title: show anonymized title for Model B
+                gr.update(value="### Model B", visible=True),
                 # [6] response_a: display Model A response
                 gr.update(value=response_a),
                 # [7] response_b: display Model B response
@@ -1188,14 +1811,16 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
             )
 
         # Feedback panel, initially hidden
-        with gr.Row(visible=False) as vote_panel:
-            feedback = gr.Radio(
-                choices=["Model A", "Model B", "Tie", "Tie (Both Bad)"],
-                label="Which model do you prefer?",
-                value="Tie",
-                interactive=False,
-            )
-            submit_feedback_btn = gr.Button("Submit Feedback", interactive=False)
+        with gr.Column(visible=False) as vote_panel:
+            gr.Markdown("### Which model do you prefer?")
+            with gr.Row():
+                feedback = gr.Radio(
+                    choices=["Model A", "Model B", "Tie", "Tie (Both Bad)"],
+                    show_label=False,
+                    value="Tie",
+                    interactive=False,
+                )
+                submit_feedback_btn = gr.Button("Submit Feedback", interactive=False)
 
         thanks_message = gr.Markdown(
             value="## Thanks for your vote!", visible=False
@@ -1244,23 +1869,23 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                     None,  # Clear oauth_token
                 )
 
-        # Handle the login button click and refresh button click
-        # Both use the same handler to check auth status
-        for button in [login_button, refresh_auth_button]:
-            button.click(
-                handle_login,
-                outputs=[
-                    repo_url,  # Keep this in sync with shared_input
-                    shared_input,  # Enable shared_input
-                    send_first,  # Enable send_first button
-                    feedback,  # Enable feedback radio buttons
-                    submit_feedback_btn,  # Enable submit_feedback_btn
-                    hint_markdown,  # Hide the hint string
-                    login_button,  # Control login button visibility
-                    refresh_auth_button,  # Control refresh button visibility
-                    oauth_token,  # Store the OAuth token
-                ],
-            )
+        # Handle the refresh button click to re-check auth status
+        # Note: login_button (gr.LoginButton) handles OAuth redirect natively;
+        # app.load(check_auth_on_load) detects auth after redirect back.
+        refresh_auth_button.click(
+            handle_login,
+            outputs=[
+                repo_url,  # Keep this in sync with shared_input
+                shared_input,  # Enable shared_input
+                send_first,  # Enable send_first button
+                feedback,  # Enable feedback radio buttons
+                submit_feedback_btn,  # Enable submit_feedback_btn
+                hint_markdown,  # Hide the hint string
+                login_button,  # Control login button visibility
+                refresh_auth_button,  # Control refresh button visibility
+                oauth_token,  # Store the OAuth token
+            ],
+        )
 
         # First round handling
         send_first.click(
@@ -1486,7 +2111,7 @@ with gr.Blocks(title="SWE-Model-Arena", theme=gr.themes.Soft()) as app:
                 gr.update(
                     value="Tie", interactive=True
                 ),  # [10] Reset feedback radio selection
-                get_leaderboard_data(vote_entry),  # [11] Updated leaderboard data
+                get_leaderboard_data(vote_entry, use_cache=False),  # [11] Updated leaderboard data
                 gr.update(
                     visible=True
                 ),  # [12] Show the thanks_message markdown component
