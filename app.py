@@ -35,6 +35,7 @@ LEADERBOARD_REPO = "SWE-Arena/leaderboard_data"
 VOTE_REPO = "SWE-Arena/vote_data"
 CONVERSATION_REPO = "SWE-Arena/conversation_data"
 LEADERBOARD_FILE = "chatbot_arena"
+MODEL_REPO = "SWE-Arena/model_data"
 
 # Timeout in seconds for model responses
 TIMEOUT = 90
@@ -46,28 +47,25 @@ LEADERBOARD_UPDATE_TIME_FRAME_DAYS = 365
 SHOW_HINT_STRING = True  # Set to False to hide the hint string altogether
 HINT_STRING = "Once signed in, your votes will be recorded securely."
 
-# Load model metadata
-model_metadata = pd.read_json("model_metadata.jsonl", lines=True)
+# Load model metadata from Hugging Face
+model_context_window = {}
+model_name_to_id = {}
+model_organization = {}
+available_models = []
 
-# Create a dictionary mapping model names to their context lengths
-model_context_window = model_metadata.set_index("model_name")[
-    "context_window"
-].to_dict()
-
-# Create a dictionary mapping model names to their model IDs
-model_name_to_id = model_metadata.set_index("model_name")[
-    "model_id"
-].to_dict()
-
-# Create a dictionary mapping model names to their organizations
-# model_name format is "{Organization}: {Model}", so we split on ": "
-model_organization = {
-    model_name: model_name.split(": ")[0]
-    for model_name in model_metadata["model_name"]
-}
-
-# Get the list of available models
-available_models = model_metadata["model_name"].tolist()
+_api = HfApi()
+for _file in _api.list_repo_files(repo_id=MODEL_REPO, repo_type="dataset"):
+    if not _file.endswith(".json"):
+        continue
+    _local_path = hf_hub_download(repo_id=MODEL_REPO, filename=_file, repo_type="dataset")
+    with open(_local_path, "r") as f:
+        _record = json.load(f)
+    # model_name is derived from the filename (without .json extension)
+    _model_name = _file.rsplit("/", 1)[-1].replace(".json", "")
+    available_models.append(_model_name)
+    model_context_window[_model_name] = _record["context_window"]
+    model_name_to_id[_model_name] = _record["model_id"]
+    model_organization[_model_name] = _model_name.split(": ")[0]
 
 
 # ---------------------------------------------------------------------------
@@ -996,12 +994,13 @@ def is_file_within_time_frame(file_path, days):
         return False
 
 
-def load_content_from_hf(repo_name):
+def load_content_from_hf(repo_name, file_name):
     """
     Read feedback content from a Hugging Face repository within the last LEADERBOARD_UPDATE_TIME_FRAME_DAYS days.
 
     Args:
         repo_name (str): Hugging Face repository name.
+        file_name (str): Only load files under this prefix directory.
 
     Returns:
         list: Aggregated feedback data read from the repository.
@@ -1009,8 +1008,10 @@ def load_content_from_hf(repo_name):
     data = []
     try:
         api = HfApi()
-        # List all files in the repository
+        # List all files in the repository, only under the file_name
         for file in api.list_repo_files(repo_id=repo_name, repo_type="dataset"):
+            if not file.startswith(f"{file_name}/"):
+                continue
             # Filter files by last LEADERBOARD_UPDATE_TIME_FRAME_DAYS days
             if not is_file_within_time_frame(file, LEADERBOARD_UPDATE_TIME_FRAME_DAYS):
                 continue
@@ -1058,7 +1059,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
             print(f"No cached leaderboard found, computing from votes...")
 
     # Load feedback data from the Hugging Face repository
-    data = load_content_from_hf(VOTE_REPO)
+    data = load_content_from_hf(VOTE_REPO, LEADERBOARD_FILE)
     vote_df = pd.DataFrame(data)
 
     # Concatenate the new feedback with the existing leaderboard data
@@ -1082,7 +1083,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
         )
 
     # Load conversation data from the Hugging Face repository
-    conversation_data = load_content_from_hf(CONVERSATION_REPO)
+    conversation_data = load_content_from_hf(CONVERSATION_REPO, LEADERBOARD_FILE)
     conversation_df = pd.DataFrame(conversation_data)
 
     # Merge vote data with conversation data
@@ -1454,7 +1455,7 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
         # NEW: Add a textbox for the repository URL above the user prompt
         repo_url = gr.Textbox(
             show_label=False,
-            placeholder="Optional: Enter the URL of a repository (GitHub, GitLab, Hugging Face), issue, commit, or pull request.",
+            placeholder="Optional: Enter any GitHub, GitLab, or Hugging Face URL.",
             lines=1,
             interactive=False,
         )
@@ -2061,9 +2062,7 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             file_name = f"{LEADERBOARD_FILE}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
             # Save feedback back to the Hugging Face dataset
-            save_content_to_hf(
-                vote_entry, VOTE_REPO, file_name, token
-            )
+            save_content_to_hf(vote_entry, VOTE_REPO, file_name, token)
 
             conversation_state["right_chat"][0]["content"] = conversation_state[
                 "right_chat"
@@ -2073,12 +2072,7 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             ][0]["content"].split("\n\nInquiry: ")[-1]
 
             # Save conversations back to the Hugging Face dataset
-            save_content_to_hf(
-                conversation_state,
-                CONVERSATION_REPO,
-                file_name,
-                token,
-            )
+            save_content_to_hf(conversation_state, CONVERSATION_REPO, file_name, token)
 
             # Clear state
             models_state.clear()

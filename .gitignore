@@ -3,4 +3,5 @@
 *.ipynb
 *.pyc
 .claude
+.vscode
 .omc
