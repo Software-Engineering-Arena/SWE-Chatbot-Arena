@@ -2,7 +2,7 @@
 title: SWE-Chatbot-Arena
 emoji: 🎯
 colorFrom: green
-colorTo: red
+colorTo: blue
 sdk: gradio
 sdk_version: 5.50.0
 app_file: app.py
