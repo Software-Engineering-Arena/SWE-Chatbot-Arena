@@ -2010,6 +2010,28 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             ],
         )
 
+        def reveal_models_and_thank(models_state):
+            """Immediately reveal model identities and show thanks message."""
+            left_model = models_state.get("left", "Unknown")
+            right_model = models_state.get("right", "Unknown")
+            left_display = left_model.split(": ", 1)[-1] if ": " in left_model else left_model
+            right_display = right_model.split(": ", 1)[-1] if ": " in right_model else right_model
+
+            return (
+                gr.update(value=f"### Model A: {left_display}", visible=True),
+                gr.update(value=f"### Model B: {right_display}", visible=True),
+                gr.update(
+                    visible=True,
+                    value=(
+                        f"## Thanks for your vote! Identities revealed above.\n"
+                        f"**Model A:** {left_display}  \n"
+                        f"**Model B:** {right_display}"
+                    ),
+                ),
+                gr.update(interactive=False),  # submit_feedback_btn
+                gr.update(interactive=False),  # feedback
+            )
+
         def submit_feedback(vote, models_state, conversation_state, token):
             # Map vote to actual model names
             match vote:
@@ -2021,6 +2043,12 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                     winner_model = "tie"
                 case _:
                     winner_model = "both_bad"
+
+            # Capture model display names before state is cleared
+            left_model = models_state.get("left", "Unknown")
+            right_model = models_state.get("right", "Unknown")
+            left_display = left_model.split(": ", 1)[-1] if ": " in left_model else left_model
+            right_display = right_model.split(": ", 1)[-1] if ": " in right_model else right_model
 
             # Create feedback entry
             vote_entry = {
@@ -2078,17 +2106,35 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                 ),  # [10] Reset feedback radio selection
                 get_leaderboard_data(vote_entry, use_cache=False),  # [11] Updated leaderboard data
                 gr.update(
-                    visible=True
-                ),  # [12] Show the thanks_message markdown component
+                    visible=True,
+                    value=(
+                        f"## Thanks for your vote!\n"
+                        f"**Model A:** {left_display}  \n"
+                        f"**Model B:** {right_display}"
+                    ),
+                ),  # [12] Show the thanks_message with model identities
+                gr.update(interactive=True),  # [13] Re-enable submit_feedback_btn
             )
 
         # Update the click event for the submit feedback button
+        # Step 1: Instantly reveal model identities and show thanks
+        # Step 2: Upload vote data and reset UI for next round
         submit_feedback_btn.click(
-            submit_feedback,
+            fn=reveal_models_and_thank,
+            inputs=[models_state],
+            outputs=[
+                response_a_title,  # Reveal Model A identity
+                response_b_title,  # Reveal Model B identity
+                thanks_message,  # Show thanks message with identities
+                submit_feedback_btn,  # Disable to prevent double-submit
+                feedback,  # Disable feedback selection
+            ],
+        ).then(
+            fn=submit_feedback,
             inputs=[feedback, models_state, conversation_state, oauth_token],
             outputs=[
                 shared_input,  # Reset shared_input
-                repo_url,  # Show the repo-related URL message
+                repo_url,  # Reset repo_url
                 user_prompt_md,  # Hide user_prompt_md
                 response_a_title,  # Hide Model A title
                 response_b_title,  # Hide Model B title
@@ -2099,7 +2145,8 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                 send_first,  # Reset and update send_first button
                 feedback,  # Reset feedback selection
                 leaderboard_component,  # Update leaderboard data dynamically
-                thanks_message,  # Show the "Thanks for your vote!" message
+                thanks_message,  # Show thanks with model identities
+                submit_feedback_btn,  # Re-enable submit feedback button
             ],
         )
 
