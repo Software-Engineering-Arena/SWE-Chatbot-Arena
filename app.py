@@ -1651,8 +1651,8 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             )
 
             # Randomly select two models for the comparison
-            selected_models = [random.choice(available_models) for _ in range(2)]
-            models = {"left": selected_models[0], "right": selected_models[1]}
+            selected_model = random.choice(available_models)
+            models = {"left": selected_model, "right": selected_model}
 
             # Create a copy to avoid modifying the original
             conversations = models.copy()
