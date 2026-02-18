@@ -956,10 +956,7 @@ def try_model_with_retry(model_alias, models_state, conversation_state, initial_
         try:
             return chat_with_models(model_alias, models_state, conversation_state)
         except Exception:
-            other_alias = "right" if model_alias == "left" else "left"
-            other_model = models_state.get(other_alias)
-            candidates = [m for m in available_models if m != other_model] or available_models
-            new_model = random.choice(candidates)
+            new_model = random.choice(available_models)
             models_state[model_alias] = new_model
             conversation_state[model_alias] = new_model
             if initial_user_content is not None:
@@ -1688,12 +1685,9 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                 else user_input
             )
 
-            # Randomly select two different models for the comparison
-            if len(available_models) >= 2:
-                left_model, right_model = random.sample(available_models, 2)
-            else:
-                left_model = right_model = available_models[0]
-            models = {"left": left_model, "right": right_model}
+            # Randomly select two models for the comparison
+            selected_model = random.choice(available_models)
+            models = {"left": selected_model, "right": selected_model}
 
             # Create a copy to avoid modifying the original
             conversations = models.copy()
