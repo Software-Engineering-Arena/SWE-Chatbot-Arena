@@ -58,7 +58,7 @@ for _file in _api.list_repo_files(repo_id=MODEL_REPO, repo_type="dataset"):
     if not _file.endswith(".json"):
         continue
     _local_path = hf_hub_download(repo_id=MODEL_REPO, filename=_file, repo_type="dataset")
-    with open(_local_path, "r") as f:
+    with open(_local_path, "r", encoding="utf-8", errors="replace") as f:
         _record = json.load(f)
     # Skip non-model files
     if "id" not in _record or "context_window" not in _record:
@@ -1054,7 +1054,7 @@ def load_content_from_hf(repo_name, file_name):
             local_path = hf_hub_download(
                 repo_id=repo_name, filename=file, repo_type="dataset"
             )
-            with open(local_path, "r") as f:
+            with open(local_path, "r", encoding="utf-8", errors="replace") as f:
                 entry = json.load(f)
                 entry["timestamp"] = file.split("/")[-1].split(".")[0]
                 data.append(entry)
@@ -1073,7 +1073,7 @@ def get_leaderboard_data(vote_entry=None, use_cache=True):
                 filename=f'{LEADERBOARD_FILE}.json',
                 repo_type="dataset",
             )
-            with open(cached_path, "r") as f:
+            with open(cached_path, "r", encoding="utf-8", errors="replace") as f:
                 leaderboard_data = pd.read_json(f)
                 # Round all numeric columns to two decimal places
                 round_cols = {
