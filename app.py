@@ -931,6 +931,35 @@ def chat_with_models(model_alias, models, conversation_state, timeout=TIMEOUT):
         return formatted_history
 
 
+def try_model_with_retry(model_alias, models_state, conversation_state, initial_user_content=None):
+    """
+    Try to get a response from the model. On failure, re-select a new model
+    and retry until success or all available models have been tried.
+
+    Args:
+        model_alias: "left" or "right"
+        models_state: dict tracking model assignments
+        conversation_state: dict tracking conversation histories
+        initial_user_content: if provided, reset chat history on retry (for first round)
+
+    Returns:
+        Formatted response string on success, or None if all retries exhausted.
+    """
+    max_retries = len(available_models)
+    for _attempt in range(max_retries):
+        try:
+            return chat_with_models(model_alias, models_state, conversation_state)
+        except Exception:
+            new_model = random.choice(available_models)
+            models_state[model_alias] = new_model
+            conversation_state[model_alias] = new_model
+            if initial_user_content is not None:
+                conversation_state[f"{model_alias}_chat"] = [
+                    {"role": "user", "content": initial_user_content}
+                ]
+    return None
+
+
 def format_conversation_history(conversation_history):
     """
     Format the conversation history with different colors for user and model messages.
@@ -1672,54 +1701,15 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             models_state.update(models)
             conversation_state.update(conversations)
 
-            try:
-                response_a = chat_with_models("left", models_state, conversation_state)
-                response_b = chat_with_models("right", models_state, conversation_state)
-            except TimeoutError as e:
-                # Handle timeout by resetting components and showing a popup.
-                return (
-                    # [0] guardrail_message: hide
-                    gr.update(visible=False),
-                    # [1] shared_input: re-enable, preserve user input
-                    gr.update(interactive=True, visible=True),
-                    # [2] repo_url: re-enable, preserve user input
-                    gr.update(interactive=True, visible=True),
-                    # [3] user_prompt_md: hide
-                    gr.update(value="", visible=False),
-                    # [4] response_a_title: hide
-                    gr.update(value="", visible=False),
-                    # [5] response_b_title: hide
-                    gr.update(value="", visible=False),
-                    # [6] response_a: clear
-                    gr.update(value=""),
-                    # [7] response_b: clear
-                    gr.update(value=""),
-                    # [8] multi_round_inputs: hide
-                    gr.update(visible=False),
-                    # [9] vote_panel: hide
-                    gr.update(visible=False),
-                    # [10] send_first: re-enable with original text
-                    gr.update(visible=True, interactive=True, value="Submit"),
-                    # [11] feedback: disable
-                    gr.update(interactive=False),
-                    # [12] models_state: pass state as-is
-                    models_state,
-                    # [13] conversation_state: pass state as-is
-                    conversation_state,
-                    # [14] timeout_popup: show popup
-                    gr.update(visible=True),
-                    # [15] model_a_send: disable
-                    gr.update(interactive=False),
-                    # [16] model_b_send: disable
-                    gr.update(interactive=False),
-                    # [17] thanks_message: hide
-                    gr.update(visible=False),
-                )
-            except Exception as e:
-                # Handle other errors by resetting UI state and showing error message
+            # Retry with new models on failure until both succeed
+            response_a = try_model_with_retry("left", models_state, conversation_state, combined_user_input)
+            response_b = try_model_with_retry("right", models_state, conversation_state, combined_user_input)
+
+            if response_a is None or response_b is None:
+                # All retries exhausted for one or both models
                 return (
                     # [0] guardrail_message: show error message
-                    gr.update(value=f"### Error: {str(e)}", visible=True),
+                    gr.update(value="### Error: Models are not available after multiple attempts. Please try again.", visible=True),
                     # [1] shared_input: re-enable, preserve user input
                     gr.update(interactive=True, visible=True),
                     # [2] repo_url: re-enable, preserve user input
@@ -1746,7 +1736,7 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                     models_state,
                     # [13] conversation_state: pass state as-is
                     conversation_state,
-                    # [14] timeout_popup: hide popup
+                    # [14] timeout_popup: hide
                     gr.update(visible=False),
                     # [15] model_a_send: disable
                     gr.update(interactive=False),
@@ -1907,27 +1897,14 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
 
         # Handle subsequent rounds
         def handle_model_a_send(user_input, models_state, conversation_state):
-            try:
-                conversation_state["left_chat"].append(
-                    {"role": "user", "content": user_input}
-                )
-                response = chat_with_models("left", models_state, conversation_state)
-                # Clear the input box and disable the send button
+            conversation_state["left_chat"].append(
+                {"role": "user", "content": user_input}
+            )
+            response = try_model_with_retry("left", models_state, conversation_state)
+            if response is None:
+                # All retries exhausted
                 return (
-                    response,
-                    conversation_state,
-                    gr.update(visible=False),
-                    gr.update(
-                        value="", interactive=True
-                    ),  # Clear and enable model_a_input
-                    gr.update(
-                        interactive=False, value="Send to Model A"
-                    ),  # Reset button text
-                )
-            except TimeoutError as e:
-                # Disable inputs when timeout occurs
-                return (
-                    gr.update(value=""),  # Clear response
+                    gr.update(value=""),
                     conversation_state,
                     gr.update(visible=True),  # Show the timeout popup
                     gr.update(interactive=True),  # Re-enable model_a_input
@@ -1935,8 +1912,17 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                         interactive=True, value="Send to Model A"
                     ),  # Re-enable model_a_send button
                 )
-            except Exception as e:
-                raise gr.Error(str(e))
+            return (
+                response,
+                conversation_state,
+                gr.update(visible=False),
+                gr.update(
+                    value="", interactive=True
+                ),  # Clear and enable model_a_input
+                gr.update(
+                    interactive=False, value="Send to Model A"
+                ),  # Reset button text
+            )
 
         def disable_model_b_ui():
             """First function to immediately disable model B UI elements"""
@@ -1948,27 +1934,14 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             )
 
         def handle_model_b_send(user_input, models_state, conversation_state):
-            try:
-                conversation_state["right_chat"].append(
-                    {"role": "user", "content": user_input}
-                )
-                response = chat_with_models("right", models_state, conversation_state)
-                # Clear the input box and disable the send button
+            conversation_state["right_chat"].append(
+                {"role": "user", "content": user_input}
+            )
+            response = try_model_with_retry("right", models_state, conversation_state)
+            if response is None:
+                # All retries exhausted
                 return (
-                    response,
-                    conversation_state,
-                    gr.update(visible=False),
-                    gr.update(
-                        value="", interactive=True
-                    ),  # Clear and enable model_b_input
-                    gr.update(
-                        interactive=False, value="Send to Model B"
-                    ),  # Reset button text
-                )
-            except TimeoutError as e:
-                # Disable inputs when timeout occurs
-                return (
-                    gr.update(value=""),  # Clear response
+                    gr.update(value=""),
                     conversation_state,
                     gr.update(visible=True),  # Show the timeout popup
                     gr.update(interactive=True),  # Re-enable model_b_input
@@ -1976,8 +1949,17 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                         interactive=True, value="Send to Model B"
                     ),  # Re-enable model_b_send button
                 )
-            except Exception as e:
-                raise gr.Error(str(e))
+            return (
+                response,
+                conversation_state,
+                gr.update(visible=False),
+                gr.update(
+                    value="", interactive=True
+                ),  # Clear and enable model_b_input
+                gr.update(
+                    interactive=False, value="Send to Model B"
+                ),  # Reset button text
+            )
 
         model_a_send.click(
             fn=disable_model_a_ui,  # First disable UI
@@ -2023,7 +2005,7 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                 gr.update(
                     visible=True,
                     value=(
-                        f"## Thanks for your vote! Identities revealed above.\n"
+                        f"## Thanks for your vote! Identities revealed below.\n"
                         f"**Model A:** {left_display}  \n"
                         f"**Model B:** {right_display}"
                     ),
@@ -2105,14 +2087,7 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                     value="Tie", interactive=True
                 ),  # [10] Reset feedback radio selection
                 get_leaderboard_data(vote_entry, use_cache=False),  # [11] Updated leaderboard data
-                gr.update(
-                    visible=True,
-                    value=(
-                        f"## Thanks for your vote!\n"
-                        f"**Model A:** {left_display}  \n"
-                        f"**Model B:** {right_display}"
-                    ),
-                ),  # [12] Show the thanks_message with model identities
+                gr.update(),  # [12] thanks_message already shown by reveal_models_and_thank
                 gr.update(interactive=True),  # [13] Re-enable submit_feedback_btn
             )
 
