@@ -1897,14 +1897,27 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
 
         # Handle subsequent rounds
         def handle_model_a_send(user_input, models_state, conversation_state):
-            conversation_state["left_chat"].append(
-                {"role": "user", "content": user_input}
-            )
-            response = try_model_with_retry("left", models_state, conversation_state)
-            if response is None:
-                # All retries exhausted
+            try:
+                conversation_state["left_chat"].append(
+                    {"role": "user", "content": user_input}
+                )
+                response = chat_with_models("left", models_state, conversation_state)
+                # Clear the input box and disable the send button
                 return (
-                    gr.update(value=""),
+                    response,
+                    conversation_state,
+                    gr.update(visible=False),
+                    gr.update(
+                        value="", interactive=True
+                    ),  # Clear and enable model_a_input
+                    gr.update(
+                        interactive=False, value="Send to Model A"
+                    ),  # Reset button text
+                )
+            except TimeoutError as e:
+                # Disable inputs when timeout occurs
+                return (
+                    gr.update(value=""),  # Clear response
                     conversation_state,
                     gr.update(visible=True),  # Show the timeout popup
                     gr.update(interactive=True),  # Re-enable model_a_input
@@ -1912,17 +1925,8 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                         interactive=True, value="Send to Model A"
                     ),  # Re-enable model_a_send button
                 )
-            return (
-                response,
-                conversation_state,
-                gr.update(visible=False),
-                gr.update(
-                    value="", interactive=True
-                ),  # Clear and enable model_a_input
-                gr.update(
-                    interactive=False, value="Send to Model A"
-                ),  # Reset button text
-            )
+            except Exception as e:
+                raise gr.Error(str(e))
 
         def disable_model_b_ui():
             """First function to immediately disable model B UI elements"""
@@ -1934,14 +1938,27 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             )
 
         def handle_model_b_send(user_input, models_state, conversation_state):
-            conversation_state["right_chat"].append(
-                {"role": "user", "content": user_input}
-            )
-            response = try_model_with_retry("right", models_state, conversation_state)
-            if response is None:
-                # All retries exhausted
+            try:
+                conversation_state["right_chat"].append(
+                    {"role": "user", "content": user_input}
+                )
+                response = chat_with_models("right", models_state, conversation_state)
+                # Clear the input box and disable the send button
                 return (
-                    gr.update(value=""),
+                    response,
+                    conversation_state,
+                    gr.update(visible=False),
+                    gr.update(
+                        value="", interactive=True
+                    ),  # Clear and enable model_b_input
+                    gr.update(
+                        interactive=False, value="Send to Model B"
+                    ),  # Reset button text
+                )
+            except TimeoutError as e:
+                # Disable inputs when timeout occurs
+                return (
+                    gr.update(value=""),  # Clear response
                     conversation_state,
                     gr.update(visible=True),  # Show the timeout popup
                     gr.update(interactive=True),  # Re-enable model_b_input
@@ -1949,17 +1966,8 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                         interactive=True, value="Send to Model B"
                     ),  # Re-enable model_b_send button
                 )
-            return (
-                response,
-                conversation_state,
-                gr.update(visible=False),
-                gr.update(
-                    value="", interactive=True
-                ),  # Clear and enable model_b_input
-                gr.update(
-                    interactive=False, value="Send to Model B"
-                ),  # Reset button text
-            )
+            except Exception as e:
+                raise gr.Error(str(e))
 
         model_a_send.click(
             fn=disable_model_a_ui,  # First disable UI
