@@ -60,6 +60,9 @@ for _file in _api.list_repo_files(repo_id=MODEL_REPO, repo_type="dataset"):
     _local_path = hf_hub_download(repo_id=MODEL_REPO, filename=_file, repo_type="dataset")
     with open(_local_path, "r") as f:
         _record = json.load(f)
+    # Skip inactive models
+    if _record.get("state") == "inactive":
+        continue
     # model_name is derived from the filename (without .json extension)
     _model_name = _file.rsplit("/", 1)[-1].replace(".json", "")
     available_models.append(_model_name)
