@@ -968,57 +968,65 @@ def try_model_with_retry(model_alias, models_state, conversation_state, initial_
 
 
 def format_conversation_history(conversation_history):
-    """
-    Format the conversation history as HTML for display in gr.HTML panels.
+    """Format conversation history for display in gr.HTML panels.
 
-    The first user message may contain injected repo context in the form
-    "Context: ...\n\nInquiry: {user_input}"; only the inquiry part is shown.
-    Subsequent user turns are preceded by a '― Follow-up ―' divider.
+    The conversation history is a flat list of {"role", "content"} messages.
+    Messages are grouped into (user, assistant) rounds:
+      - Round 0: initial user (skipped — already shown in user_prompt_md) + initial assistant
+      - Round 1+: follow-up user + follow-up assistant, preceded by a separator
+
+    Model output is converted from Markdown to HTML via the markdown library.
 
     Args:
-        conversation_history (list): Full list of conversation messages starting
-                                     from index 0 (the initial user message).
+        conversation_history (list): Full list of {"role", "content"} messages
+                                     starting from the initial user message (index 0).
 
     Returns:
         str: HTML string for rendering in a gr.HTML component.
     """
-    formatted_text = ""
+    SEPARATOR = (
+        "<div style='text-align: center; color: #888888; margin: 16px 0; "
+        "border-top: 1px solid #dddddd; padding-top: 10px;'>"
+        "<em>&#8213; Follow-up &#8213;</em></div>\n"
+    )
 
-    for i, message in enumerate(conversation_history):
-        # Skip the initial user message — it's already shown in user_prompt_md above
-        if i == 0 and message["role"] == "user":
-            continue
-
-        content = message["content"]
-
-        # Add a follow-up separator before each successive user message
-        if message["role"] == "user" and i > 0:
-            formatted_text += (
-                "<hr style='border: 0; border-top: 1px dashed #bbb; margin: 16px 0;'>"
-                "<div style='text-align: center; color: #888; font-size: 0.85em; "
-                "margin-bottom: 12px;'>&#8213; Follow-up &#8213;</div>"
-            )
-
-        if message["role"] == "user":
-            # Format user messages with blue background
-            formatted_text += (
-                f"<div style='color: #0066cc; background-color: #f0f7ff; padding: 10px; "
-                f"border-radius: 5px; margin-bottom: 10px;'>"
-                f"<strong>User:</strong> {content}</div>"
-            )
+    # Group flat message list into (user, assistant) round pairs
+    rounds = []
+    i = 0
+    while i < len(conversation_history):
+        if i + 1 < len(conversation_history):
+            rounds.append({
+                "prompt": conversation_history[i]["content"],
+                "output": conversation_history[i + 1]["content"],
+            })
+            i += 2
         else:
-            # Format assistant messages with green background
-            try:
-                rendered = _md.markdown(content, extensions=["fenced_code", "tables"])
-            except Exception:
-                rendered = content.replace("\n", "<br>")
-            formatted_text += (
-                f"<div style='color: #006633; background-color: #f0fff0; padding: 10px; "
-                f"border-radius: 5px; margin-bottom: 10px;'>"
-                f"<strong>Model:</strong> {rendered}</div>"
+            # Trailing user message with no reply yet
+            rounds.append({"prompt": conversation_history[i]["content"], "output": None})
+            i += 1
+
+    formatted = ""
+    for idx, r in enumerate(rounds):
+        if idx > 0:
+            # Show separator and the follow-up user bubble
+            prompt_html = _md.markdown(r["prompt"], extensions=["fenced_code", "tables", "nl2br"])
+            formatted += SEPARATOR
+            formatted += (
+                f"<div style='color: #0066cc; background-color: #f0f7ff; "
+                f"padding: 10px; border-radius: 5px; margin-bottom: 10px;'>"
+                f"<strong>User:</strong> {prompt_html}</div>\n"
+            )
+        # Round 0 user prompt is skipped — already shown in user_prompt_md above the panel
+
+        if r["output"] is not None:
+            output_html = _md.markdown(r["output"], extensions=["fenced_code", "tables", "nl2br"])
+            formatted += (
+                f"<div style='color: #006633; background-color: #f0fff0; "
+                f"padding: 10px; border-radius: 5px; margin-bottom: 10px;'>"
+                f"<strong>Model:</strong> {output_html}</div>\n"
             )
 
-    return formatted_text
+    return formatted
 
 
 def save_content_to_hf(data, repo_name, file_name, token=None):
