@@ -2005,28 +2005,6 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             ],
         )
 
-        def reveal_models_and_thank(models_state):
-            """Immediately reveal model identities and show thanks message."""
-            left_model = models_state.get("left", "Unknown")
-            right_model = models_state.get("right", "Unknown")
-            left_display = left_model.split(": ", 1)[-1] if ": " in left_model else left_model
-            right_display = right_model.split(": ", 1)[-1] if ": " in right_model else right_model
-
-            return (
-                gr.update(value=f"### Model A: {left_display}", visible=True),
-                gr.update(value=f"### Model B: {right_display}", visible=True),
-                gr.update(
-                    visible=True,
-                    value=(
-                        f"## Thanks for your vote! Identities revealed below.\n"
-                        f"**Model A:** {left_display}  \n"
-                        f"**Model B:** {right_display}"
-                    ),
-                ),
-                gr.update(interactive=False),  # submit_feedback_btn
-                gr.update(interactive=False),  # feedback
-            )
-
         def submit_feedback(vote, models_state, conversation_state, token):
             # Map vote to actual model names
             match vote:
@@ -2068,73 +2046,50 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             # Save conversations back to the Hugging Face dataset
             save_content_to_hf(conversation_state, CONVERSATION_REPO, file_name, token)
 
+            # Build thanks text with model identities AFTER vote is saved
+            thanks_text = (
+                "## Thanks for your vote! Identities revealed below.\n"
+                f"**Model A:** {left_display}  \n"
+                f"**Model B:** {right_display}"
+            )
+
             # Clear state
             models_state.clear()
             conversation_state.clear()
 
-            # Adjust output count to match the interface definition
             return (
-                gr.update(
-                    value="", interactive=True, visible=True
-                ),  # [0] Clear shared_input textbox
-                gr.update(
-                    value="", interactive=True, visible=True
-                ),  # [1] Clear repo_url textbox
-                gr.update(
-                    value="", visible=False
-                ),  # [2] Hide user_prompt_md markdown component
-                gr.update(
-                    value="", visible=False
-                ),  # [3] Hide response_a_title markdown component
-                gr.update(
-                    value="", visible=False
-                ),  # [4] Hide response_b_title markdown component
-                gr.update(value=""),  # [5] Clear Model A response markdown component
-                gr.update(value=""),  # [6] Clear Model B response markdown component
-                gr.update(visible=False),  # [7] Hide multi_round_inputs row
-                gr.update(visible=False),  # [8] Hide vote_panel row
-                gr.update(
-                    value="Submit", interactive=True, visible=True
-                ),  # [9] Reset send_first button
-                gr.update(
-                    value="Tie", interactive=True
-                ),  # [10] Reset feedback radio selection
-                get_leaderboard_data(vote_entry, use_cache=False),  # [11] Updated leaderboard data
-                gr.update(),  # [12] thanks_message already shown by reveal_models_and_thank
-                gr.update(interactive=True),  # [13] Re-enable submit_feedback_btn
+                gr.update(value="", interactive=True, visible=True),    # [0] shared_input
+                gr.update(value="", interactive=True, visible=True),    # [1] repo_url
+                gr.update(value="", visible=False),                     # [2] user_prompt_md
+                gr.update(value="", visible=False),                     # [3] response_a_title
+                gr.update(value="", visible=False),                     # [4] response_b_title
+                gr.update(value=""),                                    # [5] response_a
+                gr.update(value=""),                                    # [6] response_b
+                gr.update(visible=False),                               # [7] multi_round_inputs
+                gr.update(visible=False),                               # [8] vote_panel
+                gr.update(value="Submit", interactive=True, visible=True),  # [9] send_first
+                gr.update(value="Tie", interactive=True),               # [10] feedback
+                get_leaderboard_data(vote_entry, use_cache=False),      # [11] leaderboard
+                gr.update(value=thanks_text, visible=True),             # [12] thanks_message
             )
 
-        # Update the click event for the submit feedback button
-        # Step 1: Instantly reveal model identities and show thanks
-        # Step 2: Upload vote data and reset UI for next round
         submit_feedback_btn.click(
-            fn=reveal_models_and_thank,
-            inputs=[models_state],
-            outputs=[
-                response_a_title,  # Reveal Model A identity
-                response_b_title,  # Reveal Model B identity
-                thanks_message,  # Show thanks message with identities
-                submit_feedback_btn,  # Disable to prevent double-submit
-                feedback,  # Disable feedback selection
-            ],
-        ).then(
             fn=submit_feedback,
             inputs=[feedback, models_state, conversation_state, oauth_token],
             outputs=[
-                shared_input,  # Reset shared_input
-                repo_url,  # Reset repo_url
-                user_prompt_md,  # Hide user_prompt_md
-                response_a_title,  # Hide Model A title
-                response_b_title,  # Hide Model B title
-                response_a,  # Clear Model A response
-                response_b,  # Clear Model B response
-                multi_round_inputs,  # Hide multi-round input section
-                vote_panel,  # Hide vote panel
-                send_first,  # Reset and update send_first button
-                feedback,  # Reset feedback selection
-                leaderboard_component,  # Update leaderboard data dynamically
-                thanks_message,  # Show thanks with model identities
-                submit_feedback_btn,  # Re-enable submit feedback button
+                shared_input,
+                repo_url,
+                user_prompt_md,
+                response_a_title,
+                response_b_title,
+                response_a,
+                response_b,
+                multi_round_inputs,
+                vote_panel,
+                send_first,
+                feedback,
+                leaderboard_component,
+                thanks_message,
             ],
         )
 
