@@ -931,7 +931,7 @@ def chat_with_models(model_alias, models, conversation_state, timeout=TIMEOUT):
 
         # Format the complete conversation history with different colors
         formatted_history = format_conversation_history(
-            conversation_state[model_key][1:]
+            conversation_state[model_key]
         )
 
         return formatted_history
@@ -969,16 +969,27 @@ def try_model_with_retry(model_alias, models_state, conversation_state, initial_
 def format_conversation_history(conversation_history):
     """
     Format the conversation history with different colors for user and model messages.
+    The first user+model exchange is shown directly; subsequent user turns are preceded
+    by a '--- Follow-up ---' separator.
 
     Args:
-        conversation_history (list): List of conversation messages with role and content.
+        conversation_history (list): List of conversation messages with role and content,
+                                     starting from the initial user message (index 0).
 
     Returns:
         str: Markdown formatted conversation history.
     """
     formatted_text = ""
 
-    for message in conversation_history:
+    for i, message in enumerate(conversation_history):
+        # Add a follow-up separator before each user message after the first
+        if message["role"] == "user" and i > 0:
+            formatted_text += (
+                "<hr style='border: 0; border-top: 1px dashed #bbb; margin: 16px 0;'>"
+                "<div style='text-align: center; color: #888; font-size: 0.85em; "
+                "margin-bottom: 12px;'>&#8213; Follow-up &#8213;</div>\n\n"
+            )
+
         if message["role"] == "user":
             # Format user messages with blue text
             formatted_text += f"<div style='color: #0066cc; background-color: #f0f7ff; padding: 10px; border-radius: 5px; margin-bottom: 10px;'><strong>User:</strong> {message['content']}</div>\n\n"
@@ -1936,7 +1947,13 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                     ),  # Re-enable model_a_send button
                 )
             except Exception as e:
-                raise gr.Error(str(e))
+                return (
+                    gr.update(value=f"<div style='color: red;'>Error: {e}</div>"),
+                    conversation_state,
+                    gr.update(visible=False),
+                    gr.update(interactive=True),  # Re-enable model_a_input
+                    gr.update(interactive=True, value="Send to Model A"),  # Re-enable model_a_send
+                )
 
         def disable_model_b_ui():
             """First function to immediately disable model B UI elements"""
@@ -1977,7 +1994,13 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                     ),  # Re-enable model_b_send button
                 )
             except Exception as e:
-                raise gr.Error(str(e))
+                return (
+                    gr.update(value=f"<div style='color: red;'>Error: {e}</div>"),
+                    conversation_state,
+                    gr.update(visible=False),
+                    gr.update(interactive=True),  # Re-enable model_b_input
+                    gr.update(interactive=True, value="Send to Model B"),  # Re-enable model_b_send
+                )
 
         model_a_send.click(
             fn=disable_model_a_ui,  # First disable UI
