@@ -902,7 +902,7 @@ def chat_with_models(model_alias, models, conversation_state, timeout=TIMEOUT):
             model_response["content"] = response.choices[0].message.content
         except Exception as e:
             model_response["error"] = (
-                f"{models[model_alias]} model is not available. Error: {e}"
+                f"Model is not available. Error: {e}"
             )
         finally:
             response_event.set()  # Signal that the response is completed
@@ -916,7 +916,7 @@ def chat_with_models(model_alias, models, conversation_state, timeout=TIMEOUT):
 
     if not response_event_occurred:
         raise TimeoutError(
-            f"The {model_alias} model did not respond within {timeout} seconds."
+            f"The model did not respond within {timeout} seconds."
         )
     elif model_response["error"]:
         raise Exception(model_response["error"])
