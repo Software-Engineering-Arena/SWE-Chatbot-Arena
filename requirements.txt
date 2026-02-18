@@ -3,6 +3,7 @@ evalica
 gradio[oauth]
 gradio_leaderboard
 huggingface_hub
+markdown
 openai
 PyGithub
 python-dotenv

@@ -7,6 +7,7 @@ import evalica
 import gitlab
 import io
 import json
+import markdown as _md
 import os
 import random
 import threading
@@ -968,34 +969,55 @@ def try_model_with_retry(model_alias, models_state, conversation_state, initial_
 
 def format_conversation_history(conversation_history):
     """
-    Format the conversation history with different colors for user and model messages.
-    The first user+model exchange is shown directly; subsequent user turns are preceded
-    by a '--- Follow-up ---' separator.
+    Format the conversation history as HTML for display in gr.HTML panels.
+
+    The first user message may contain injected repo context in the form
+    "Context: ...\n\nInquiry: {user_input}"; only the inquiry part is shown.
+    Subsequent user turns are preceded by a '― Follow-up ―' divider.
 
     Args:
-        conversation_history (list): List of conversation messages with role and content,
-                                     starting from the initial user message (index 0).
+        conversation_history (list): Full list of conversation messages starting
+                                     from index 0 (the initial user message).
 
     Returns:
-        str: Markdown formatted conversation history.
+        str: HTML string for rendering in a gr.HTML component.
     """
     formatted_text = ""
 
     for i, message in enumerate(conversation_history):
+        content = message["content"]
+
+        # For the first user message, strip injected repo context if present
+        if i == 0 and message["role"] == "user":
+            if "\n\nInquiry: " in content:
+                content = content.split("\n\nInquiry: ", 1)[1]
+
         # Add a follow-up separator before each user message after the first
         if message["role"] == "user" and i > 0:
             formatted_text += (
                 "<hr style='border: 0; border-top: 1px dashed #bbb; margin: 16px 0;'>"
                 "<div style='text-align: center; color: #888; font-size: 0.85em; "
-                "margin-bottom: 12px;'>&#8213; Follow-up &#8213;</div>\n\n"
+                "margin-bottom: 12px;'>&#8213; Follow-up &#8213;</div>"
             )
 
         if message["role"] == "user":
-            # Format user messages with blue text
-            formatted_text += f"<div style='color: #0066cc; background-color: #f0f7ff; padding: 10px; border-radius: 5px; margin-bottom: 10px;'><strong>User:</strong> {message['content']}</div>\n\n"
+            # Format user messages with blue background
+            formatted_text += (
+                f"<div style='color: #0066cc; background-color: #f0f7ff; padding: 10px; "
+                f"border-radius: 5px; margin-bottom: 10px;'>"
+                f"<strong>User:</strong> {content}</div>"
+            )
         else:
-            # Format assistant messages with dark green text
-            formatted_text += f"<div style='color: #006633; background-color: #f0fff0; padding: 10px; border-radius: 5px; margin-bottom: 10px;'><strong>Model:</strong> {message['content']}</div>\n\n"
+            # Format assistant messages with green background
+            try:
+                rendered = _md.markdown(content, extensions=["fenced_code", "tables"])
+            except Exception:
+                rendered = content.replace("\n", "<br>")
+            formatted_text += (
+                f"<div style='color: #006633; background-color: #f0fff0; padding: 10px; "
+                f"border-radius: 5px; margin-bottom: 10px;'>"
+                f"<strong>Model:</strong> {rendered}</div>"
+            )
 
     return formatted_text
 
@@ -1525,8 +1547,8 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
             response_b_title = gr.Markdown(value="", visible=False)
 
         with gr.Row():
-            response_a = gr.Markdown(label="Response from Model A")
-            response_b = gr.Markdown(label="Response from Model B")
+            response_a = gr.HTML(label="Response from Model A", value="")
+            response_b = gr.HTML(label="Response from Model B", value="")
 
         # Add a popup component for timeout notification
         with gr.Row(visible=False) as timeout_popup:
