@@ -985,14 +985,13 @@ def format_conversation_history(conversation_history):
     formatted_text = ""
 
     for i, message in enumerate(conversation_history):
+        # Skip the initial user message — it's already shown in user_prompt_md above
+        if i == 0 and message["role"] == "user":
+            continue
+
         content = message["content"]
 
-        # For the first user message, strip injected repo context if present
-        if i == 0 and message["role"] == "user":
-            if "\n\nInquiry: " in content:
-                content = content.split("\n\nInquiry: ", 1)[1]
-
-        # Add a follow-up separator before each user message after the first
+        # Add a follow-up separator before each successive user message
         if message["role"] == "user" and i > 0:
             formatted_text += (
                 "<hr style='border: 0; border-top: 1px dashed #bbb; margin: 16px 0;'>"
