@@ -1798,6 +1798,9 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                 gr.update(visible=False),
             )
 
+        # State to track the selected vote (mirrors feedback Radio)
+        feedback_state = gr.State("Tie")
+
         # Feedback panel, initially hidden
         with gr.Column(visible=False) as vote_panel:
             gr.Markdown("### Which model do you prefer?")
@@ -1809,6 +1812,8 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
                     interactive=False,
                 )
                 submit_feedback_btn = gr.Button("Submit Feedback", interactive=False)
+
+        feedback.change(fn=lambda v: v, inputs=[feedback], outputs=[feedback_state])
 
         thanks_message = gr.Markdown(
             value="## Thanks for your vote!", visible=False
@@ -2075,7 +2080,7 @@ with gr.Blocks(title="SWE-Chatbot-Arena", theme=gr.themes.Soft()) as app:
 
         submit_feedback_btn.click(
             fn=submit_feedback,
-            inputs=[feedback, models_state, conversation_state, oauth_token],
+            inputs=[feedback_state, models_state, conversation_state, oauth_token],
             outputs=[
                 shared_input,
                 repo_url,
